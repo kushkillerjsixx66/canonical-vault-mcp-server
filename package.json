@@ -1,0 +1,34 @@
+{
+  "name": "canonical-vault-mcp-server",
+  "version": "1.0.0",
+  "description": "Read-only MCP server exposing the canonical-vault repository (files, directories, lineage) to MCP clients like GitHub Copilot",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@vercel/mcp-adapter": "^0.3.2",
+    "@vercel/node": "^5.8.22",
+    "axios": "^1.7.9",
+    "express": "^4.21.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true,
+    "esbuild@0.28.1": true
+  }
+}
