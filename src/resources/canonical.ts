@@ -16,7 +16,6 @@ export interface CanonicalResource {
   mimeType: string;
 }
 
-/** Curated substrate — text-only, known-good paths. */
 export const CANONICAL_RESOURCES: CanonicalResource[] = [
   {
     name: "index",
@@ -36,24 +35,21 @@ export const CANONICAL_RESOURCES: CanonicalResource[] = [
     name: "invariants",
     title: "Lattice Invariants v1",
     path: "00_governance/invariants/Lattice_Invariants_v1.md",
-    description:
-      "Six invariants (I·COH … VI·SIG) with enforcement and failure classes.",
+    description: "Six invariants (I·COH … VI·SIG) with enforcement and failure classes.",
     mimeType: "text/markdown",
   },
   {
     name: "module-registry",
     title: "Module Registry",
     path: "04_system_spec/MODULE_REGISTRY.md",
-    description:
-      "All modules: rank, role, interfaces, invariant bindings, failure modes.",
+    description: "All modules: rank, role, interfaces, invariant bindings, failure modes.",
     mimeType: "text/markdown",
   },
   {
     name: "gates",
     title: "Governance Gates (G1/G2/G3)",
     path: "04_system_spec/Governance_Gates.md",
-    description:
-      "Sentinel gate scoring, attention budget, chain validation, decision codes.",
+    description: "Sentinel gate scoring, attention budget, chain validation, decision codes.",
     mimeType: "text/markdown",
   },
   {
@@ -115,7 +111,7 @@ export const CANONICAL_RESOURCES: CanonicalResource[] = [
 ];
 
 export function resourceUri(name: string): string {
-  return `vault://${name}`;
+  return "vault://" + name;
 }
 
 export function findCanonicalByUri(uri: string): CanonicalResource | undefined {
@@ -124,52 +120,66 @@ export function findCanonicalByUri(uri: string): CanonicalResource | undefined {
   return CANONICAL_RESOURCES.find((r) => r.name === match[1].toLowerCase());
 }
 
-/** Encode path segments only — same effective behavior as vault_get_file. */
-function contentsEndpoint(repoPath: string): string {
-  const encoded = repoPath
-    .split("/")
-    .map((seg) => encodeURIComponent(seg))
-    .join("/");
-  return `\( {REPO_PATH}/contents/ \){encoded}`;
-}
-
 function truncate(text: string): { text: string; truncated: boolean } {
   if (text.length <= CHARACTER_LIMIT) return { text, truncated: false };
   return {
     text:
       text.slice(0, CHARACTER_LIMIT) +
-      `\n\n[Truncated at ${CHARACTER_LIMIT} characters.]`,
+      "\n\n[Truncated at " +
+      CHARACTER_LIMIT +
+      " characters.]",
     truncated: true,
   };
 }
 
-/** Fetch and decode a single canonical file from GitHub. */
+/** Same URL pattern as vault_get_file — do not mangle ${} in the shell. */
 export async function fetchCanonicalContent(
   resource: CanonicalResource,
   ref: string = GITHUB_DEFAULT_REF
 ): Promise<{ text: string; sha: string; size: number; truncated: boolean }> {
-  const endpoint = contentsEndpoint(resource.path);
+  const endpoint =
+    REPO_PATH +
+    "/contents/" +
+    encodeURIComponent(resource.path).replace(/%2F/g, "/");
+
   const data = await githubGet<GitHubFileContent>(endpoint, { ref });
 
   if (Array.isArray(data) || data.type !== "file") {
-    throw new Error(`'${resource.path}' is not a file`);
+    throw new Error("'" + resource.path + "' is not a file");
   }
   if (data.size > MAX_FILE_BYTES) {
     throw new Error(
-      `'${resource.path}' is ${data.size} bytes (limit ${MAX_FILE_BYTES})`
+      "'" + resource.path + "' is " + data.size + " bytes (limit " + MAX_FILE_BYTES + ")"
     );
   }
   if (!data.content || data.encoding !== "base64") {
-    throw new Error(`'${resource.path}' has no readable text content`);
+    throw new Error("'" + resource.path + "' has no readable text content");
   }
 
   const decoded = Buffer.from(data.content, "base64").toString("utf-8");
   const header =
-    `# ${resource.title}\n` +
-    `uri: ${resourceUri(resource.name)}\n` +
-    `path: ${resource.path}\n` +
-    `ref: ${ref} · sha: ${data.sha} · ${data.size} bytes\n` +
-    `repo: \( {GITHUB_OWNER}/ \){GITHUB_REPO}\n\n`;
+    "# " +
+    resource.title +
+    "\n" +
+    "uri: " +
+    resourceUri(resource.name) +
+    "\n" +
+    "path: " +
+    resource.path +
+    "\n" +
+    "ref: " +
+    ref +
+    " · sha: " +
+    data.sha +
+    " · " +
+    data.size +
+    " bytes\n" +
+    "repo: " +
+    GITHUB_OWNER +
+    "/" +
+    GITHUB_REPO +
+    "\n\n";
+
   const { text, truncated } = truncate(header + decoded);
   return { text, sha: data.sha, size: data.size, truncated };
 }
