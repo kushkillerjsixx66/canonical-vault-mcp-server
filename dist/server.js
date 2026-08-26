@@ -6,7 +6,7 @@ import { GITHUB_DEFAULT_REF } from "./constants.js";
 export function createServer() {
     const server = new McpServer({
         name: "canonical-vault-mcp-server",
-        version: "1.1.0",
+        version: "1.1.1",
     });
     registerVaultTools(server);
     registerCanonicalTools(server);

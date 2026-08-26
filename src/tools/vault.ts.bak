@@ -1,0 +1,555 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import {
+  CHARACTER_LIMIT,
+  GITHUB_DEFAULT_REF,
+  GITHUB_OWNER,
+  GITHUB_REPO,
+  MAX_FILE_BYTES,
+} from "../constants.js";
+import { githubGet, handleGitHubError, REPO_PATH } from "../services/github.js";
+import {
+  GitHubCodeSearchResult,
+  GitHubCommitDetail,
+  GitHubCommitSummary,
+  GitHubContentItem,
+  GitHubFileContent,
+  ResponseFormat,
+} from "../types.js";
+
+const RefSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .default(GITHUB_DEFAULT_REF)
+  .describe(
+    `Branch, tag, or commit SHA to read from (default: '${GITHUB_DEFAULT_REF}')`
+  );
+
+const ResponseFormatSchema = z
+  .nativeEnum(ResponseFormat)
+  .default(ResponseFormat.MARKDOWN)
+  .describe("Output format: 'markdown' for human-readable or 'json' for machine-readable");
+
+function truncate(text: string): { text: string; truncated: boolean } {
+  if (text.length <= CHARACTER_LIMIT) return { text, truncated: false };
+  return {
+    text:
+      text.slice(0, CHARACTER_LIMIT) +
+      `\n\n[Truncated at ${CHARACTER_LIMIT} characters. Narrow your path, ref, or query to see more.]`,
+    truncated: true,
+  };
+}
+
+export function registerVaultTools(server: McpServer): void {
+  // ---------------------------------------------------------------------
+  // vault_list_directory
+  // ---------------------------------------------------------------------
+  const ListDirectoryInputSchema = z
+    .object({
+      path: z
+        .string()
+        .max(500)
+        .default("")
+        .describe("Directory path within the repo, relative to root. Empty string means repo root."),
+      ref: RefSchema,
+      response_format: ResponseFormatSchema,
+    })
+    .strict();
+  type ListDirectoryInput = z.infer<typeof ListDirectoryInputSchema>;
+
+  server.registerTool(
+    "vault_list_directory",
+    {
+      title: "List Vault Directory",
+      description: `List the files and subdirectories at a given path in the canonical-vault repository (${GITHUB_OWNER}/${GITHUB_REPO}).
+
+Args:
+  - path (string): Directory path relative to repo root (default: "" for root)
+  - ref (string): Branch, tag, or commit SHA (default: '${GITHUB_DEFAULT_REF}')
+  - response_format ('markdown' | 'json'): Output format (default: 'markdown')
+
+Returns:
+  For JSON format: { "path": string, "ref": string, "entries": [{ "name": string, "path": string, "type": "file"|"dir", "size": number }] }
+
+Examples:
+  - Use when: "What's in the governance directory?" -> path="governance"
+  - Use when: "Show me the top-level structure of the vault" -> path=""
+  - Don't use when: You need the actual contents of a file (use vault_get_file instead)
+
+Error Handling:
+  - Returns "Error: ... not found" if the path doesn't exist on that ref
+  - Returns a rate limit message if GitHub's API limit is exceeded (set GITHUB_TOKEN to raise it)`,
+      inputSchema: ListDirectoryInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: ListDirectoryInput) => {
+      try {
+        const data = await githubGet<GitHubContentItem | GitHubContentItem[]>(
+          `${REPO_PATH}/contents/${encodeURIComponent(params.path).replace(/%2F/g, "/")}`,
+          { ref: params.ref }
+        );
+
+        const entries = Array.isArray(data) ? data : [data];
+        const output = {
+          path: params.path || "/",
+          ref: params.ref,
+          count: entries.length,
+          entries: entries
+            .map((e) => ({
+              name: e.name,
+              path: e.path,
+              type: e.type === "dir" ? "dir" : "file",
+              size: e.size,
+            }))
+            .sort((a, b) =>
+              a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1
+            ),
+        };
+
+        let textContent: string;
+        if (params.response_format === ResponseFormat.MARKDOWN) {
+          const lines = [`# ${output.path} (ref: ${output.ref})`, "", `${output.count} entries`, ""];
+          for (const e of output.entries) {
+            lines.push(`- ${e.type === "dir" ? "📁" : "📄"} \`${e.path}\`${e.type === "file" ? ` (${e.size} bytes)` : ""}`);
+          }
+          textContent = lines.join("\n");
+        } else {
+          textContent = JSON.stringify(output, null, 2);
+        }
+
+        const { text, truncated } = truncate(textContent);
+        return { content: [{ type: "text", text }], structuredContent: { ...output, truncated } };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `directory '${params.path}'`) }] };
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // vault_get_file
+  // ---------------------------------------------------------------------
+  const GetFileInputSchema = z
+    .object({
+      path: z.string().min(1).max(500).describe("File path within the repo, relative to root, e.g. 'governance/CONSTITUTION.md'"),
+      ref: RefSchema,
+    })
+    .strict();
+  type GetFileInput = z.infer<typeof GetFileInputSchema>;
+
+  server.registerTool(
+    "vault_get_file",
+    {
+      title: "Get Vault File",
+      description: `Fetch the decoded text content of a single file from the canonical-vault repository (${GITHUB_OWNER}/${GITHUB_REPO}).
+
+Args:
+  - path (string): File path relative to repo root, e.g. 'governance/CONSTITUTION.md'
+  - ref (string): Branch, tag, or commit SHA (default: '${GITHUB_DEFAULT_REF}')
+
+Returns:
+  The raw file text, prefixed with a small header (path, ref, sha, size). Binary or oversized files (> ${MAX_FILE_BYTES} bytes) return an error instead of garbled content.
+
+Examples:
+  - Use when: "Read me the current Constitution" -> path="governance/CONSTITUTION.md"
+  - Use when: "What does vara.py look like right now?" -> path="vara.py"
+  - Don't use when: You just want to know if a file exists or how big it is (use vault_list_directory instead)
+
+Error Handling:
+  - Returns "Error: ... not found" if the path doesn't exist on that ref
+  - Returns an error for directories (use vault_list_directory instead) or binary files`,
+      inputSchema: GetFileInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: GetFileInput) => {
+      try {
+        const data = await githubGet<GitHubFileContent>(
+          `${REPO_PATH}/contents/${encodeURIComponent(params.path).replace(/%2F/g, "/")}`,
+          { ref: params.ref }
+        );
+
+        if (Array.isArray(data) || data.type !== "file") {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: '${params.path}' is a directory, not a file. Use vault_list_directory instead.` }],
+          };
+        }
+        if (data.size > MAX_FILE_BYTES) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Error: '${params.path}' is ${data.size} bytes, exceeding the ${MAX_FILE_BYTES}-byte limit for text retrieval.` }],
+          };
+        }
+        if (!data.content || data.encoding !== "base64") {
+          return { isError: true, content: [{ type: "text", text: `Error: '${params.path}' has no readable text content (may be binary).` }] };
+        }
+
+        const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+        const header = `# ${data.path}\nref: ${params.ref} · sha: ${data.sha} · ${data.size} bytes\n\n`;
+        const { text, truncated } = truncate(header + decoded);
+
+        return {
+          content: [{ type: "text", text }],
+          structuredContent: { path: data.path, ref: params.ref, sha: data.sha, size: data.size, truncated },
+        };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `file '${params.path}'`) }] };
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // vault_get_file_history  (lineage)
+  // ---------------------------------------------------------------------
+  const FileHistoryInputSchema = z
+    .object({
+      path: z.string().max(500).default("").describe("File or directory path to trace lineage for. Empty string means whole-repo history."),
+      ref: RefSchema,
+      limit: z.number().int().min(1).max(100).default(20).describe("Maximum commits to return"),
+      offset: z.number().int().min(0).default(0).describe("Number of most-recent commits to skip, for pagination"),
+      response_format: ResponseFormatSchema,
+    })
+    .strict();
+  type FileHistoryInput = z.infer<typeof FileHistoryInputSchema>;
+
+  server.registerTool(
+    "vault_get_file_history",
+    {
+      title: "Get Vault File/Path Lineage",
+      description: `Get the commit lineage (history) affecting a file or directory in canonical-vault — i.e. every commit that touched that path, most recent first.
+
+Args:
+  - path (string): File or directory path to trace (default: "" for whole-repo history)
+  - ref (string): Branch, tag, or commit SHA to start from (default: '${GITHUB_DEFAULT_REF}')
+  - limit (number): Max commits to return, 1-100 (default: 20)
+  - offset (number): Commits to skip for pagination (default: 0)
+  - response_format ('markdown' | 'json'): Output format (default: 'markdown')
+
+Returns:
+  For JSON format: { "path": string, "count": number, "commits": [{ "sha": string, "message": string, "author": string, "date": string, "url": string }], "has_more": boolean }
+
+Examples:
+  - Use when: "How has VARA_SPEC_1.0 evolved?" -> path="system-specs/VARA_SPEC_1.0.md"
+  - Use when: "What's the recent commit lineage for the whole vault?" -> path=""
+  - Don't use when: You need the full diff of one specific commit (use vault_get_commit instead)
+
+Error Handling:
+  - Returns "Error: ... not found" if the path or ref doesn't exist`,
+      inputSchema: FileHistoryInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: FileHistoryInput) => {
+      try {
+        const commits = await githubGet<GitHubCommitSummary[]>(`${REPO_PATH}/commits`, {
+          sha: params.ref,
+          path: params.path || undefined,
+          per_page: Math.min(params.limit + params.offset, 100),
+        });
+
+        const page = commits.slice(params.offset, params.offset + params.limit);
+        const output = {
+          path: params.path || "/",
+          count: page.length,
+          offset: params.offset,
+          has_more: commits.length > params.offset + page.length,
+          commits: page.map((c) => ({
+            sha: c.sha.slice(0, 12),
+            message: c.commit.message.split("\n")[0],
+            author: c.author?.login || c.commit.author?.name || "unknown",
+            date: c.commit.author?.date || "unknown",
+            url: c.html_url,
+          })),
+        };
+
+        let textContent: string;
+        if (params.response_format === ResponseFormat.MARKDOWN) {
+          const lines = [`# Lineage: ${output.path}`, "", `Showing ${output.count} commits (offset ${output.offset})`, ""];
+          for (const c of output.commits) {
+            lines.push(`- \`${c.sha}\` — ${c.message} (${c.author}, ${c.date})`);
+          }
+          if (output.has_more) lines.push("", `_More commits available — call again with offset=${params.offset + params.limit}_`);
+          textContent = lines.join("\n");
+        } else {
+          textContent = JSON.stringify(output, null, 2);
+        }
+
+        const { text, truncated } = truncate(textContent);
+        return { content: [{ type: "text", text }], structuredContent: { ...output, truncated } };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `history for '${params.path}'`) }] };
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // vault_get_commit
+  // ---------------------------------------------------------------------
+  const GetCommitInputSchema = z
+    .object({
+      sha: z.string().min(4).max(64).describe("Full or abbreviated commit SHA"),
+      response_format: ResponseFormatSchema,
+    })
+    .strict();
+  type GetCommitInput = z.infer<typeof GetCommitInputSchema>;
+
+  server.registerTool(
+    "vault_get_commit",
+    {
+      title: "Get Vault Commit Detail",
+      description: `Get full detail for a single commit in canonical-vault: message, author, stats, and the list of files it changed (with per-file diff stats).
+
+Args:
+  - sha (string): Full or abbreviated commit SHA (get one from vault_get_file_history)
+  - response_format ('markdown' | 'json'): Output format (default: 'markdown')
+
+Returns:
+  For JSON format: { "sha": string, "message": string, "author": string, "date": string, "stats": {...}, "files": [{ "filename": string, "status": string, "additions": number, "deletions": number }] }
+
+Examples:
+  - Use when: "What exactly changed in commit a1b2c3d?" -> sha="a1b2c3d"
+  - Don't use when: You just want the commit list for a path (use vault_get_file_history instead)
+
+Error Handling:
+  - Returns "Error: ... not found" if the SHA doesn't exist in this repo`,
+      inputSchema: GetCommitInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: GetCommitInput) => {
+      try {
+        const c = await githubGet<GitHubCommitDetail>(`${REPO_PATH}/commits/${params.sha}`);
+        const output = {
+          sha: c.sha,
+          message: c.commit.message,
+          author: c.author?.login || c.commit.author?.name || "unknown",
+          date: c.commit.author?.date || "unknown",
+          url: c.html_url,
+          stats: c.stats,
+          files: (c.files || []).map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+          })),
+        };
+
+        let textContent: string;
+        if (params.response_format === ResponseFormat.MARKDOWN) {
+          const lines = [
+            `# Commit ${output.sha.slice(0, 12)}`,
+            "",
+            output.message,
+            "",
+            `**Author**: ${output.author}  `,
+            `**Date**: ${output.date}  `,
+            output.stats ? `**Stats**: +${output.stats.additions} / -${output.stats.deletions}` : "",
+            "",
+            "## Files changed",
+            "",
+          ];
+          for (const f of output.files) {
+            lines.push(`- ${f.status}: \`${f.filename}\` (+${f.additions}/-${f.deletions})`);
+          }
+          textContent = lines.join("\n");
+        } else {
+          textContent = JSON.stringify(output, null, 2);
+        }
+
+        const { text, truncated } = truncate(textContent);
+        return { content: [{ type: "text", text }], structuredContent: { ...output, truncated } };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `commit '${params.sha}'`) }] };
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------
+  // vault_search_files
+  // ---------------------------------------------------------------------
+  const SearchFilesInputSchema = z
+    .object({
+      query: z.string().min(2).max(300).describe("Search terms to match against file contents/names (GitHub code search syntax supported, e.g. 'invariant path:governance')"),
+      limit: z.number().int().min(1).max(50).default(20).describe("Maximum results to return"),
+      offset: z.number().int().min(0).default(0).describe("Number of results to skip for pagination"),
+      response_format: ResponseFormatSchema,
+    })
+    .strict();
+  type SearchFilesInput = z.infer<typeof SearchFilesInputSchema>;
+
+  server.registerTool(
+    "vault_search_files",
+    {
+      title: "Search Vault Files",
+      description: `Search file names and contents across the canonical-vault repository (${GITHUB_OWNER}/${GITHUB_REPO}) using GitHub code search.
+
+Args:
+  - query (string): Search terms. Supports GitHub code search qualifiers like 'path:governance' or 'extension:md'
+  - limit (number): Max results, 1-50 (default: 20)
+  - offset (number): Results to skip for pagination (default: 0)
+  - response_format ('markdown' | 'json'): Output format (default: 'markdown')
+
+Returns:
+  For JSON format: { "total": number, "count": number, "results": [{ "path": string, "url": string }], "has_more": boolean }
+
+Examples:
+  - Use when: "Where is Coherence defined?" -> query="Coherence path:governance"
+  - Use when: "Find every mention of vara.py" -> query="vara.py"
+  - Don't use when: You already know the exact path (use vault_get_file instead)
+
+Error Handling:
+  - Returns "No files found matching '<query>'" if the search returns empty
+  - GitHub code search only indexes the default branch and repos under ~size limits; very new commits may lag briefly`,
+      inputSchema: SearchFilesInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: SearchFilesInput) => {
+      try {
+        const q = `${params.query} repo:${GITHUB_OWNER}/${GITHUB_REPO}`;
+        const data = await githubGet<GitHubCodeSearchResult>("/search/code", {
+          q,
+          per_page: Math.min(params.limit + params.offset, 100),
+        });
+
+        const page = data.items.slice(params.offset, params.offset + params.limit);
+        if (!page.length) {
+          return { content: [{ type: "text", text: `No files found matching '${params.query}'` }] };
+        }
+
+        const output = {
+          total: data.total_count,
+          count: page.length,
+          offset: params.offset,
+          has_more: data.total_count > params.offset + page.length,
+          results: page.map((item) => ({ path: item.path, url: item.html_url })),
+        };
+
+        let textContent: string;
+        if (params.response_format === ResponseFormat.MARKDOWN) {
+          const lines = [`# Search: '${params.query}'`, "", `${output.total} total matches (showing ${output.count})`, ""];
+          for (const r of output.results) {
+            lines.push(`- \`${r.path}\``);
+          }
+          textContent = lines.join("\n");
+        } else {
+          textContent = JSON.stringify(output, null, 2);
+        }
+
+        const { text, truncated } = truncate(textContent);
+        return { content: [{ type: "text", text }], structuredContent: { ...output, truncated } };
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `search '${params.query}'`) }] };
+      }
+    }
+
+//vault_get_canonical
+
+import {
+  CANONICAL_RESOURCES,
+  fetchCanonicalContent,
+  handleGitHubError,
+  resourceUri,
+} from "../resources/canonical.js";
+import { GITHUB_DEFAULT_REF } from "../constants.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const names = CANONICAL_RESOURCES.map((r) => r.name) as [string, ...string[]];
+
+export function registerCanonicalTools(server: McpServer): void {
+  server.registerTool(
+    "vault_get_canonical",
+    {
+      title: "Get Canonical Substrate Document",
+      description: `Fetch a curated Lattice substrate document by short name (not by fragile path).
+
+Known names: ${names.join(", ")}.
+
+Prefer this over vault_get_file when you want constitution, invariants, gates, module-registry, node-model, neuralese, index, etc.
+
+Args:
+  - name: one of the known short names
+  - ref: branch/tag/sha (default: main)
+
+Returns the document text with path/ref/sha header.`,
+      inputSchema: z
+        .object({
+          name: z.enum(names).describe("Canonical short name"),
+          ref: z
+            .string()
+            .min(1)
+            .max(200)
+            .default(GITHUB_DEFAULT_REF)
+            .describe("Branch, tag, or commit SHA"),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async (params: { name: string; ref: string }) => {
+      const resource = CANONICAL_RESOURCES.find((r) => r.name === params.name);
+      if (!resource) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Error: unknown name '${params.name}'. Use one of: ${names.join(", ")}`,
+            },
+          ],
+        };
+      }
+      try {
+        const { text, sha, size, truncated } = await fetchCanonicalContent(
+          resource,
+          params.ref
+        );
+        return {
+          content: [{ type: "text", text }],
+          structuredContent: {
+            name: resource.name,
+            uri: resourceUri(resource.name),
+            path: resource.path,
+            ref: params.ref,
+            sha,
+            size,
+            truncated,
+          },
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: handleGitHubError(error, `canonical '${params.name}'`),
+            },
+          ],
+        };
+      }
