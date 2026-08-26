@@ -9,17 +9,14 @@ import { githubGet, handleGitHubError, REPO_PATH } from "../services/github.js";
 import type { GitHubFileContent } from "../types.js";
 
 export interface CanonicalResource {
-  /** Short stable name used in URI: vault://{name} */
   name: string;
-  /** Human title for resources/list */
   title: string;
-  /** Path relative to repo root */
   path: string;
   description: string;
   mimeType: string;
 }
 
-/** Curated substrate — only text, governance-relevant, known-good paths. */
+/** Curated substrate — text-only, known-good paths. */
 export const CANONICAL_RESOURCES: CanonicalResource[] = [
   {
     name: "index",
@@ -39,21 +36,24 @@ export const CANONICAL_RESOURCES: CanonicalResource[] = [
     name: "invariants",
     title: "Lattice Invariants v1",
     path: "00_governance/invariants/Lattice_Invariants_v1.md",
-    description: "Six invariants (I·COH … VI·SIG) with enforcement and failure classes.",
+    description:
+      "Six invariants (I·COH … VI·SIG) with enforcement and failure classes.",
     mimeType: "text/markdown",
   },
   {
     name: "module-registry",
     title: "Module Registry",
     path: "04_system_spec/MODULE_REGISTRY.md",
-    description: "All modules: rank, role, interfaces, invariant bindings, failure modes.",
+    description:
+      "All modules: rank, role, interfaces, invariant bindings, failure modes.",
     mimeType: "text/markdown",
   },
   {
     name: "gates",
     title: "Governance Gates (G1/G2/G3)",
     path: "04_system_spec/Governance_Gates.md",
-    description: "Sentinel gate scoring, attention budget, chain validation, decision codes.",
+    description:
+      "Sentinel gate scoring, attention budget, chain validation, decision codes.",
     mimeType: "text/markdown",
   },
   {
@@ -124,6 +124,15 @@ export function findCanonicalByUri(uri: string): CanonicalResource | undefined {
   return CANONICAL_RESOURCES.find((r) => r.name === match[1].toLowerCase());
 }
 
+/** Encode path segments only — same effective behavior as vault_get_file. */
+function contentsEndpoint(repoPath: string): string {
+  const encoded = repoPath
+    .split("/")
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+  return `\( {REPO_PATH}/contents/ \){encoded}`;
+}
+
 function truncate(text: string): { text: string; truncated: boolean } {
   if (text.length <= CHARACTER_LIMIT) return { text, truncated: false };
   return {
@@ -139,10 +148,8 @@ export async function fetchCanonicalContent(
   resource: CanonicalResource,
   ref: string = GITHUB_DEFAULT_REF
 ): Promise<{ text: string; sha: string; size: number; truncated: boolean }> {
-  const data = await githubGet<GitHubFileContent>(
-    `\( {REPO_PATH}/contents/ \){encodeURIComponent(resource.path).replace(/%2F/g, "/")}`,
-    { ref }
-  );
+  const endpoint = contentsEndpoint(resource.path);
+  const data = await githubGet<GitHubFileContent>(endpoint, { ref });
 
   if (Array.isArray(data) || data.type !== "file") {
     throw new Error(`'${resource.path}' is not a file`);
