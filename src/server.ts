@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerVaultTools } from "./tools/vault.js";
 import { registerCanonicalTools } from "./tools/canonical.js";
+import { registerVaultWriteTools } from "./tools/vault-write.js";
 import {
   CANONICAL_RESOURCES,
   fetchCanonicalContent,
@@ -8,16 +9,22 @@ import {
   handleGitHubError,
   resourceUri,
 } from "./resources/canonical.js";
-import { GITHUB_DEFAULT_REF } from "./constants.js";
+import { GITHUB_DEFAULT_REF, GITHUB_WRITE_TOKEN } from "./constants.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "canonical-vault-mcp-server",
-    version: "1.1.2",
+    version: "1.2.0",
   });
 
   registerVaultTools(server);
   registerCanonicalTools(server);
+  // Write tools are opt-in: they only exist on the server at all if
+  // GITHUB_WRITE_TOKEN is set. No env var, no write tools, no behavior
+  // change from before this was added.
+  if (GITHUB_WRITE_TOKEN) {
+    registerVaultWriteTools(server);
+  }
   // ----- Resources: curated substrate -----
   for (const r of CANONICAL_RESOURCES) {
     const uri = resourceUri(r.name);

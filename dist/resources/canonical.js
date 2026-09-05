@@ -1,6 +1,5 @@
-import { CHARACTER_LIMIT, GITHUB_DEFAULT_REF, MAX_FILE_BYTES, } from "../constants.js";
-import { githubGet, handleGitHubError } from "../services/github.js";
-/** Curated substrate — text-only, known-good paths. */
+import { CHARACTER_LIMIT, GITHUB_DEFAULT_REF, GITHUB_OWNER, GITHUB_REPO, MAX_FILE_BYTES, } from "../constants.js";
+import { githubGet, handleGitHubError, REPO_PATH } from "../services/github.js";
 export const CANONICAL_RESOURCES = [
     {
         name: "index",
@@ -95,7 +94,7 @@ export const CANONICAL_RESOURCES = [
     },
 ];
 export function resourceUri(name) {
-    return `vault://${name}`;
+    return "vault://" + name;
 }
 export function findCanonicalByUri(uri) {
     const match = /^vault:\/\/([a-z0-9-]+)$/i.exec(uri.trim());
@@ -103,42 +102,54 @@ export function findCanonicalByUri(uri) {
         return undefined;
     return CANONICAL_RESOURCES.find((r) => r.name === match[1].toLowerCase());
 }
-/** Encode path segments only — same effective behavior as vault_get_file. */
-function contentsEndpoint(repoPath) {
-    const encoded = repoPath
-        .split("/")
-        .map((seg) => encodeURIComponent(seg))
-        .join("/");
-    return `\( {REPO_PATH}/contents/ \){encoded}`;
-}
 function truncate(text) {
     if (text.length <= CHARACTER_LIMIT)
         return { text, truncated: false };
     return {
         text: text.slice(0, CHARACTER_LIMIT) +
-            `\n\n[Truncated at ${CHARACTER_LIMIT} characters.]`,
+            "\n\n[Truncated at " +
+            CHARACTER_LIMIT +
+            " characters.]",
         truncated: true,
     };
 }
-/** Fetch and decode a single canonical file from GitHub. */
+/** Same URL pattern as vault_get_file — do not mangle ${} in the shell. */
 export async function fetchCanonicalContent(resource, ref = GITHUB_DEFAULT_REF) {
-    const endpoint = contentsEndpoint(resource.path);
+    const endpoint = REPO_PATH +
+        "/contents/" +
+        encodeURIComponent(resource.path).replace(/%2F/g, "/");
     const data = await githubGet(endpoint, { ref });
     if (Array.isArray(data) || data.type !== "file") {
-        throw new Error(`'${resource.path}' is not a file`);
+        throw new Error("'" + resource.path + "' is not a file");
     }
     if (data.size > MAX_FILE_BYTES) {
-        throw new Error(`'${resource.path}' is ${data.size} bytes (limit ${MAX_FILE_BYTES})`);
+        throw new Error("'" + resource.path + "' is " + data.size + " bytes (limit " + MAX_FILE_BYTES + ")");
     }
     if (!data.content || data.encoding !== "base64") {
-        throw new Error(`'${resource.path}' has no readable text content`);
+        throw new Error("'" + resource.path + "' has no readable text content");
     }
     const decoded = Buffer.from(data.content, "base64").toString("utf-8");
-    const header = `# ${resource.title}\n` +
-        `uri: ${resourceUri(resource.name)}\n` +
-        `path: ${resource.path}\n` +
-        `ref: ${ref} · sha: ${data.sha} · ${data.size} bytes\n` +
-        `repo: \( {GITHUB_OWNER}/ \){GITHUB_REPO}\n\n`;
+    const header = "# " +
+        resource.title +
+        "\n" +
+        "uri: " +
+        resourceUri(resource.name) +
+        "\n" +
+        "path: " +
+        resource.path +
+        "\n" +
+        "ref: " +
+        ref +
+        " · sha: " +
+        data.sha +
+        " · " +
+        data.size +
+        " bytes\n" +
+        "repo: " +
+        GITHUB_OWNER +
+        "/" +
+        GITHUB_REPO +
+        "\n\n";
     const { text, truncated } = truncate(header + decoded);
     return { text, sha: data.sha, size: data.size, truncated };
 }

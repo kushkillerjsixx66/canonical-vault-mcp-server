@@ -39,6 +39,24 @@ export interface GitHubCommitDetail extends GitHubCommitSummary {
   }>;
 }
 
+export interface GitHubContentPutResponse {
+  content: GitHubFileContent | null;
+  commit: {
+    sha: string;
+    html_url: string;
+    message: string;
+  };
+}
+
+export interface GitHubPullRequest {
+  number: number;
+  html_url: string;
+  title: string;
+  state: string;
+  head: { ref: string };
+  base: { ref: string };
+}
+
 export interface GitHubCodeSearchResult {
   total_count: number;
   incomplete_results: boolean;
