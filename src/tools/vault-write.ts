@@ -21,13 +21,14 @@ function assertWritable(branch: string, path: string): void {
   if (!WRITE_BRANCH_ALLOWLIST.includes(branch)) {
     throw new WriteScopeError(
       `'${branch}' is not a governed write branch (allowed: ${WRITE_BRANCH_ALLOWLIST.join(", ")}). ` +
-        `Per 00_governance/claude/manifest.json, canonical_merge_authority is false — ` +
-        `'${GITHUB_DEFAULT_REF}' can only be reached via vault_open_pr, never written to directly.`
+        `Per Model Contribution Contract (branch sovereignty) and canonical_merge_authority: false — ` +
+        `'${GITHUB_DEFAULT_REF}' can only be reached via vault_open_pr, never written to directly. ` +
+        `Each model must write only to its own branch (e.g. grok → grok, claude → claude).`
     );
   }
   if (WRITE_PATH_DENYLIST.some((rx) => rx.test(path))) {
     throw new WriteScopeError(
-      `'${path}' is in a prohibited zone (direct_canonical_mutation, per manifest.json). Refusing to write.`
+      `'${path}' is in a prohibited zone (direct_canonical_mutation). Refusing to write.`
     );
   }
 }
@@ -47,7 +48,10 @@ export function registerVaultWriteTools(server: McpServer): void {
       branch: z
         .string()
         .default(WRITE_BRANCH_ALLOWLIST[0])
-        .describe(`Target branch. Must be one of: ${WRITE_BRANCH_ALLOWLIST.join(", ")}. Never '${GITHUB_DEFAULT_REF}'.`),
+        .describe(
+          `Target branch. Must be one of: ${WRITE_BRANCH_ALLOWLIST.join(", ")}. Never '${GITHUB_DEFAULT_REF}'. ` +
+            `Per Model Contribution Contract, use your model identity branch only (grok, claude, chatgpt, …).`
+        ),
     })
     .strict();
   type ProposeChangeInput = z.infer<typeof ProposeChangeInputSchema>;
@@ -56,7 +60,9 @@ export function registerVaultWriteTools(server: McpServer): void {
     "vault_propose_change",
     {
       title: "Propose Vault Change",
-      description: `Create or update a single file on a governed non-canonical branch of ${GITHUB_OWNER}/${GITHUB_REPO}. Cannot write to '${GITHUB_DEFAULT_REF}' or any branch outside the write allowlist (${WRITE_BRANCH_ALLOWLIST.join(", ")}), and cannot touch paths in the prohibited zones defined by 00_governance/claude/manifest.json (constitution, ip_legal, the manifest itself).
+      description: `Create or update a single file on a governed non-canonical branch of ${GITHUB_OWNER}/${GITHUB_REPO}. Cannot write to '${GITHUB_DEFAULT_REF}' or any branch outside the write allowlist (${WRITE_BRANCH_ALLOWLIST.join(", ")}), and cannot touch paths in the prohibited zones (constitution, ip_legal, protected manifests).
+
+Branch sovereignty (Model Contribution Contract): each model must pass its own branch (grok → grok, claude → claude, chatgpt → chatgpt, etc.).
 
 This always appends a new commit via GitHub's Contents API — it cannot force-push or rewrite history. Use vault_open_pr afterward to propose merging into ${GITHUB_DEFAULT_REF}; there is no merge tool in this server.
 
@@ -64,7 +70,7 @@ Args:
   - path (string): File path relative to repo root
   - content (string): Full new file content — replaces the whole file
   - message (string): Commit message
-  - branch (string): Target branch (default: '${WRITE_BRANCH_ALLOWLIST[0]}')
+  - branch (string): Target branch (default: '${WRITE_BRANCH_ALLOWLIST[0]}'; always pass your model branch explicitly)
 
 Returns:
   The new commit sha and its GitHub URL.
@@ -121,7 +127,10 @@ Error Handling:
       head: z
         .string()
         .default(WRITE_BRANCH_ALLOWLIST[0])
-        .describe(`Source branch. Must be one of: ${WRITE_BRANCH_ALLOWLIST.join(", ")}.`),
+        .describe(
+          `Source branch. Must be one of: ${WRITE_BRANCH_ALLOWLIST.join(", ")}. ` +
+            `Use your model identity branch only.`
+        ),
       base: z.string().default(GITHUB_DEFAULT_REF).describe(`Target branch (default: '${GITHUB_DEFAULT_REF}').`),
     })
     .strict();
@@ -131,12 +140,12 @@ Error Handling:
     "vault_open_pr",
     {
       title: "Open Vault Pull Request",
-      description: `Open a pull request from a governed branch into '${GITHUB_DEFAULT_REF}' on ${GITHUB_OWNER}/${GITHUB_REPO}. This tool can only OPEN the PR — there is no merge tool anywhere in this server. Merging stays a human action on GitHub, consistent with canonical_merge_authority: false in 00_governance/claude/manifest.json.
+      description: `Open a pull request from a governed branch into '${GITHUB_DEFAULT_REF}' on ${GITHUB_OWNER}/${GITHUB_REPO}. This tool can only OPEN the PR — there is no merge tool anywhere in this server. Merging stays a human action on GitHub, consistent with canonical_merge_authority: false and the Model Contribution Contract.
 
 Args:
   - title (string): PR title
   - body (string): PR description (default: empty)
-  - head (string): Source branch (default: '${WRITE_BRANCH_ALLOWLIST[0]}')
+  - head (string): Source branch (default: '${WRITE_BRANCH_ALLOWLIST[0]}'; pass your model branch)
   - base (string): Target branch (default: '${GITHUB_DEFAULT_REF}')
 
 Returns:
