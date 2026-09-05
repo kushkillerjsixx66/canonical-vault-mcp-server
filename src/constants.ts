@@ -17,11 +17,14 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 // no other repos.
 export const GITHUB_WRITE_TOKEN = process.env.GITHUB_WRITE_TOKEN;
 
-// Branches the write tools are permitted to touch. Per
-// 00_governance/claude/manifest.json (canonical_merge_authority: false),
-// the canonical/default branch must never appear here — the check below
-// makes that a hard startup failure, not just a convention.
-export const WRITE_BRANCH_ALLOWLIST = (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || "claude")
+// Branches the write tools are permitted to touch. Per Model Contribution
+// Contract (00_governance/contracts/model-contribution.md) and
+// canonical_merge_authority: false, each model is expected to write only
+// to its own branch. The shared allowlist is the governed surface; the
+// canonical/default branch must never appear here — the check below makes
+// that a hard startup failure, not just a convention.
+// Default covers all existing model branches in canonical-vault.
+export const WRITE_BRANCH_ALLOWLIST = (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || "grok,claude,chatgpt,gemini,copilot")
   .split(",")
   .map((b) => b.trim())
   .filter(Boolean);
@@ -34,7 +37,7 @@ if (WRITE_BRANCH_ALLOWLIST.includes(GITHUB_DEFAULT_REF)) {
 }
 
 // Path prefixes the write tools may never touch, regardless of branch.
-// Mirrors manifest.json's prohibited_zones (direct_canonical_mutation).
+// Mirrors prohibited_zones (direct_canonical_mutation).
 export const WRITE_PATH_DENYLIST: RegExp[] = [
   /^00_governance\/constitution\//,
   /^06_ip_legal\//,
