@@ -29,24 +29,30 @@ export const KNOWN_MODEL_BRANCHES = [
 export type ModelBranch = (typeof KNOWN_MODEL_BRANCHES)[number];
 
 /**
- * Optional hard lock for a single-model deployment.
- * When set (e.g. MODEL_WRITE_SCOPE=grok), the write allowlist collapses to
- * that branch alone and client-supplied branch/head is forced to match.
- * Use one Vercel project (or env) per model for true isolation.
+ * Optional write-scope env.
+ * - Single value (e.g. MODEL_WRITE_SCOPE=grok): hard-lock this deployment to that branch only.
+ * - Comma-separated (e.g. grok,claude,chatgpt): multi-model allowlist (same as GITHUB_WRITE_BRANCH_ALLOWLIST).
+ * Path/branch coherence still applies in both modes.
  */
-export const MODEL_WRITE_SCOPE = (process.env.MODEL_WRITE_SCOPE || "")
+export const MODEL_WRITE_SCOPE_RAW = (process.env.MODEL_WRITE_SCOPE || "")
   .trim()
   .toLowerCase();
 
 function resolveWriteAllowlist(): string[] {
-  if (MODEL_WRITE_SCOPE) {
-    if (MODEL_WRITE_SCOPE === GITHUB_DEFAULT_REF) {
+  if (MODEL_WRITE_SCOPE_RAW) {
+    const parts = MODEL_WRITE_SCOPE_RAW.split(",")
+      .map((b) => b.trim())
+      .filter(Boolean);
+    if (parts.includes(GITHUB_DEFAULT_REF)) {
       throw new Error(
-        `MODEL_WRITE_SCOPE must not be '${GITHUB_DEFAULT_REF}' (canonical branch). ` +
+        `MODEL_WRITE_SCOPE must not include '${GITHUB_DEFAULT_REF}' (canonical branch). ` +
           "Refusing to start — fix the env var and redeploy."
       );
     }
-    return [MODEL_WRITE_SCOPE];
+    if (parts.length === 0) {
+      throw new Error("MODEL_WRITE_SCOPE is set but empty after parsing.");
+    }
+    return parts;
   }
   return (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || KNOWN_MODEL_BRANCHES.join(","))
     .split(",")
@@ -54,9 +60,7 @@ function resolveWriteAllowlist(): string[] {
     .filter(Boolean);
 }
 
-// Branches the write tools are permitted to touch. Per Model Contribution
-// Contract and canonical_merge_authority: false, each model may write only
-// to its own branch. MODEL_WRITE_SCOPE (if set) hard-locks to one branch.
+// Branches the write tools are permitted to touch.
 export const WRITE_BRANCH_ALLOWLIST = resolveWriteAllowlist();
 
 if (WRITE_BRANCH_ALLOWLIST.includes(GITHUB_DEFAULT_REF)) {
@@ -72,18 +76,22 @@ if (WRITE_BRANCH_ALLOWLIST.length === 0) {
   );
 }
 
-/** Single-branch lock active when allowlist has exactly one entry (scope or singleton list). */
+/** True only when exactly one branch is allowed (true single-model hard lock). */
 export const WRITE_BRANCH_LOCKED = WRITE_BRANCH_ALLOWLIST.length === 1;
 export const LOCKED_WRITE_BRANCH = WRITE_BRANCH_LOCKED
   ? WRITE_BRANCH_ALLOWLIST[0]
   : undefined;
 
+/** Back-compat alias used in tool messages when a single scope is set. */
+export const MODEL_WRITE_SCOPE = WRITE_BRANCH_LOCKED
+  ? (LOCKED_WRITE_BRANCH as string)
+  : MODEL_WRITE_SCOPE_RAW;
+
 // Path prefixes the write tools may never touch, regardless of branch.
-// Mirrors prohibited_zones (direct_canonical_mutation).
 export const WRITE_PATH_DENYLIST: RegExp[] = [
   /^00_governance\/constitution\//,
   /^06_ip_legal\//,
-  /^00_governance\/claude\/manifest\.json$/, // can't rewrite its own scope
+  /^00_governance\/claude\/manifest\.json$/,
   /(^|\/)\.git(\/|$)/,
 ];
 
@@ -100,8 +108,5 @@ export function modelSegmentFromPath(path: string): string | undefined {
   return m ? m[2].toLowerCase() : undefined;
 }
 
-// Maximum characters returned in a single tool response before truncation.
 export const CHARACTER_LIMIT = 25000;
-
-// Maximum file size (bytes) we will fetch and decode as text content.
 export const MAX_FILE_BYTES = 500_000;
