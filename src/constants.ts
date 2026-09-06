@@ -17,17 +17,47 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 // no other repos.
 export const GITHUB_WRITE_TOKEN = process.env.GITHUB_WRITE_TOKEN;
 
+// Known model identity branches (Model Contribution Contract).
+export const KNOWN_MODEL_BRANCHES = [
+  "grok",
+  "claude",
+  "chatgpt",
+  "gemini",
+  "copilot",
+] as const;
+
+export type ModelBranch = (typeof KNOWN_MODEL_BRANCHES)[number];
+
+/**
+ * Optional hard lock for a single-model deployment.
+ * When set (e.g. MODEL_WRITE_SCOPE=grok), the write allowlist collapses to
+ * that branch alone and client-supplied branch/head is forced to match.
+ * Use one Vercel project (or env) per model for true isolation.
+ */
+export const MODEL_WRITE_SCOPE = (process.env.MODEL_WRITE_SCOPE || "")
+  .trim()
+  .toLowerCase();
+
+function resolveWriteAllowlist(): string[] {
+  if (MODEL_WRITE_SCOPE) {
+    if (MODEL_WRITE_SCOPE === GITHUB_DEFAULT_REF) {
+      throw new Error(
+        `MODEL_WRITE_SCOPE must not be '${GITHUB_DEFAULT_REF}' (canonical branch). ` +
+          "Refusing to start — fix the env var and redeploy."
+      );
+    }
+    return [MODEL_WRITE_SCOPE];
+  }
+  return (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || KNOWN_MODEL_BRANCHES.join(","))
+    .split(",")
+    .map((b) => b.trim())
+    .filter(Boolean);
+}
+
 // Branches the write tools are permitted to touch. Per Model Contribution
-// Contract (00_governance/contracts/model-contribution.md) and
-// canonical_merge_authority: false, each model is expected to write only
-// to its own branch. The shared allowlist is the governed surface; the
-// canonical/default branch must never appear here — the check below makes
-// that a hard startup failure, not just a convention.
-// Default covers all existing model branches in canonical-vault.
-export const WRITE_BRANCH_ALLOWLIST = (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || "grok,claude,chatgpt,gemini,copilot")
-  .split(",")
-  .map((b) => b.trim())
-  .filter(Boolean);
+// Contract and canonical_merge_authority: false, each model may write only
+// to its own branch. MODEL_WRITE_SCOPE (if set) hard-locks to one branch.
+export const WRITE_BRANCH_ALLOWLIST = resolveWriteAllowlist();
 
 if (WRITE_BRANCH_ALLOWLIST.includes(GITHUB_DEFAULT_REF)) {
   throw new Error(
@@ -35,6 +65,18 @@ if (WRITE_BRANCH_ALLOWLIST.includes(GITHUB_DEFAULT_REF)) {
       "Refusing to start with this configuration — fix the env var and redeploy."
   );
 }
+
+if (WRITE_BRANCH_ALLOWLIST.length === 0) {
+  throw new Error(
+    "Write branch allowlist is empty. Set MODEL_WRITE_SCOPE or GITHUB_WRITE_BRANCH_ALLOWLIST."
+  );
+}
+
+/** Single-branch lock active when allowlist has exactly one entry (scope or singleton list). */
+export const WRITE_BRANCH_LOCKED = WRITE_BRANCH_ALLOWLIST.length === 1;
+export const LOCKED_WRITE_BRANCH = WRITE_BRANCH_LOCKED
+  ? WRITE_BRANCH_ALLOWLIST[0]
+  : undefined;
 
 // Path prefixes the write tools may never touch, regardless of branch.
 // Mirrors prohibited_zones (direct_canonical_mutation).
@@ -44,6 +86,19 @@ export const WRITE_PATH_DENYLIST: RegExp[] = [
   /^00_governance\/claude\/manifest\.json$/, // can't rewrite its own scope
   /(^|\/)\.git(\/|$)/,
 ];
+
+/**
+ * Model-owned path roots from MCC: vault/<model>/, runtime/<model>/,
+ * 00_governance/<model>/. When a path is under one of these, the write
+ * branch MUST equal the model segment — blocks cross-branch pollution.
+ */
+export const MODEL_OWNED_PATH =
+  /^(vault|runtime|00_governance)\/([a-z0-9][a-z0-9_-]*)\//i;
+
+export function modelSegmentFromPath(path: string): string | undefined {
+  const m = MODEL_OWNED_PATH.exec(path.replace(/^\/+/, ""));
+  return m ? m[2].toLowerCase() : undefined;
+}
 
 // Maximum characters returned in a single tool response before truncation.
 export const CHARACTER_LIMIT = 25000;
