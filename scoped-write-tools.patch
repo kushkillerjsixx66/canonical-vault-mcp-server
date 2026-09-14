@@ -32,7 +32,7 @@ index 6a6b340..349d695 100644
  | `GITHUB_REPO` | No | `canonical-vault` | Change only if the repo is renamed |
  | `GITHUB_DEFAULT_REF` | No | `main` | Default branch tools read from when no `ref` is given |
 +| `GITHUB_WRITE_TOKEN` | No — write tools are disabled without it | none | A **separate**, fine-grained PAT scoped to `Contents: Read and write` on `canonical-vault` only (no Administration, no other repos). Setting this is the only thing that activates `vault_propose_change` / `vault_open_pr`. |
-+| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `claude` | Comma-separated branches the write tools may touch. The server refuses to boot if this ever includes `GITHUB_DEFAULT_REF`. |
++| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `claude,grok,chatgpt,gemini,copliot` | Comma-separated branches the write tools may touch. The server refuses to boot if this ever includes `GITHUB_DEFAULT_REF`. |
  
  After adding env vars, redeploy (`vercel --prod`) so the function picks them up.
  
@@ -44,7 +44,7 @@ index 6a6b340..349d695 100644
 +
 +- `canonical_merge_authority: false` → there is no merge tool, ever. `vault_open_pr` opens a PR; a human merges it on GitHub.
 +- `prohibited_zones` → `WRITE_PATH_DENYLIST` in `src/constants.ts` blocks the constitution, IP/legal docs, and the manifest itself, regardless of branch.
-+- Branch scope → `WRITE_BRANCH_ALLOWLIST` (default: `claude` only). The server throws on startup if `main` (or whatever `GITHUB_DEFAULT_REF` is) is ever added to it — a misconfigured env var fails loud, not silent.
++- Branch scope → `WRITE_BRANCH_ALLOWLIST` (default: `claude,grok,chatgpt,gemini,copilot` only). The server throws on startup if `main` (or whatever `GITHUB_DEFAULT_REF` is) is ever added to it — a misconfigured env var fails loud, not silent.
 +
 +**Setup:**
 +1. Create a fine-grained GitHub PAT scoped to `kushkillerjsixx66/canonical-vault` only, permission `Contents: Read and write`. Nothing else.
@@ -87,7 +87,7 @@ index e5938c7..cfa1cbf 100644
 +// 00_governance/claude/manifest.json (canonical_merge_authority: false),
 +// the canonical/default branch must never appear here — the check below
 +// makes that a hard startup failure, not just a convention.
-+export const WRITE_BRANCH_ALLOWLIST = (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || "claude")
++export const WRITE_BRANCH_ALLOWLIST = (process.env.GITHUB_WRITE_BRANCH_ALLOWLIST || "claude,grok,chatgpt,grmini,copilot")
 +  .split(",")
 +  .map((b) => b.trim())
 +  .filter(Boolean);
