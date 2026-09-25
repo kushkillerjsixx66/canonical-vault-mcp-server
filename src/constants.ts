@@ -24,6 +24,7 @@ export const KNOWN_MODEL_BRANCHES = [
   "chatgpt",
   "gemini",
   "copilot",
+  "muse",
 ] as const;
 
 export type ModelBranch = (typeof KNOWN_MODEL_BRANCHES)[number];
