@@ -47,7 +47,7 @@ https://canonical-vault-mcp-server.vercel.app/api/mcp
 | `GITHUB_REPO` | No | `canonical-vault` | |
 | `GITHUB_DEFAULT_REF` | No | `main` | |
 | `GITHUB_WRITE_TOKEN` | No — write tools off without it | none | **Sensitive.** Fine-grained PAT: Contents R/W on `canonical-vault` only. |
-| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `grok,claude,chatgpt,gemini,copilot` | Shared multi-model surface. Must never include `main`. |
+| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `grok,claude,chatgpt,gemini,copilot,muse` | Shared multi-model surface. Must never include `main`. |
 | `MODEL_WRITE_SCOPE` | No | unset | **Hard lock.** e.g. `grok` → this deployment may only write to branch `grok`. Overrides the multi-model allowlist. Use one deployment per model for true isolation. |
 
 After changing env vars, redeploy production.
@@ -58,7 +58,7 @@ After changing env vars, redeploy production.
 
 Enforcement layers:
 
-1. **`MODEL_WRITE_SCOPE` (recommended per model)** — Set `MODEL_WRITE_SCOPE=grok` on the Grok deployment, `=claude` on Claude’s, etc. Client cannot pick another branch.
+1. **`MODEL_WRITE_SCOPE` (recommended per model)** — Set `MODEL_WRITE_SCOPE=grok` on the Grok deployment, `=claude` on Claude’s, `=muse` on Muse’s, etc. Client cannot pick another branch.
 2. **Path/branch coherence** — Paths under `vault/<model>/`, `runtime/<model>/`, or `00_governance/<model>/` require `branch === <model>`. Blocks e.g. writing `vault/claude/...` while targeting branch `grok`.
 3. **Allowlist** — Without `MODEL_WRITE_SCOPE`, only listed model branches are writable; `main` is never writable.
 4. **Path denylist** — Constitution, IP/legal, protected manifests.
