@@ -111,7 +111,7 @@ export const MODEL_OWNED_PATH = new RegExp(
 );
 
 export function modelSegmentFromPath(path: string): string | undefined {
-  const m = MODEL_OWNED_PATH.exec(path.replace(/^\\/+/, ""));
+  const m = MODEL_OWNED_PATH.exec(path.replace(/^\/+/, ""));
   return m ? m[2].toLowerCase() : undefined;
 }
 
