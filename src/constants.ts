@@ -98,14 +98,22 @@ export const WRITE_PATH_DENYLIST: RegExp[] = [
 
 /**
  * Model-owned path roots from MCC: vault/<model>/, runtime/<model>/,
- * 00_governance/<model>/. When a path is under one of these, the write
- * branch MUST equal the model segment — blocks cross-branch pollution.
+ * and 00_governance/<model>/. Only declared model branches are treated as
+ * model-owned. Governance-owned directories such as 00_governance/contracts
+ * and 00_governance/operator_manual are not model namespaces merely because
+ * their directory name happens to match the path grammar.
  */
-export const MODEL_OWNED_PATH =
-  /^(vault|runtime|00_governance)\/([a-z0-9][a-z0-9_-]*)\//i;
+const MODEL_BRANCH_PATTERN = KNOWN_MODEL_BRANCHES.map((branch) =>
+  branch.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")
+).join("|");
+
+export const MODEL_OWNED_PATH = new RegExp(
+  `^(vault|runtime|00_governance)\\/(${MODEL_BRANCH_PATTERN})\\/`,
+  "i"
+);
 
 export function modelSegmentFromPath(path: string): string | undefined {
-  const m = MODEL_OWNED_PATH.exec(path.replace(/^\/+/, ""));
+  const m = MODEL_OWNED_PATH.exec(path.replace(/^\\/+/, ""));
   return m ? m[2].toLowerCase() : undefined;
 }
 
