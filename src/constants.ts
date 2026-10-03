@@ -103,9 +103,7 @@ export const WRITE_PATH_DENYLIST: RegExp[] = [
  * and 00_governance/operator_manual are not model namespaces merely because
  * their directory name happens to match the path grammar.
  */
-const MODEL_BRANCH_PATTERN = KNOWN_MODEL_BRANCHES.map((branch) =>
-  branch.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")
-).join("|");
+const MODEL_BRANCH_PATTERN = KNOWN_MODEL_BRANCHES.join("|");
 
 export const MODEL_OWNED_PATH = new RegExp(
   `^(vault|runtime|00_governance)\\/(${MODEL_BRANCH_PATTERN})\\/`,
