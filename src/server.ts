@@ -9,12 +9,13 @@ import {
   handleGitHubError,
   resourceUri,
 } from "./resources/canonical.js";
+import { registerResourceTemplates } from "./resources/templates.js";
 import { GITHUB_DEFAULT_REF, GITHUB_WRITE_TOKEN } from "./constants.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "canonical-vault-mcp-server",
-    version: "1.2.0",
+    version: "1.3.0",
   });
 
   registerVaultTools(server);
@@ -92,6 +93,11 @@ export function createServer(): McpServer {
       }
     );
   }
+
+  // ----- Resource templates: vault://file/{+path}, vault://commit/{sha} -----
+  // Phase 1 (2026-10-07): any vault file / commit becomes addressable as a
+  // resource instead of requiring a tool call. See resources/templates.ts.
+  registerResourceTemplates(server);
 
   // ----- Prompt: orientation (SDK: name + description string + callback) -----
   const orientationText = [
