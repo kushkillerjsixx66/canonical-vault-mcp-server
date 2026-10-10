@@ -113,3 +113,22 @@ vercel dev   # http://localhost:3000/api/mcp
 - Stateless per-request Streamable HTTP (`api/mcp.ts`).
 - Lineage tools map to GitHub commit history.
 - GitHub code search indexes the default branch only (propagation delay possible).
+
+
+## 4. Governance enforcement boundary
+
+This MCP server is a **Canonical Vault access and proposal interface**, not by itself the full Lattice runtime governance engine.
+
+The server's TypeScript entry point creates `createServer()`, which registers repository read tools, canonical document resources, and optional governed-branch proposal tools. It does not instantiate the Python `05_runtime/governance/boundary.py` `GovernanceBoundary` or call its `AuthoritativeGovernanceEngine`.
+
+Keep these controls distinct:
+
+- **MCP scope controls:** repository allowlisting, branch allowlisting / `MODEL_WRITE_SCOPE`, path restrictions, and PR-only writes constrain what this service can propose.
+- **Lattice runtime governance:** canonical-state retrieval, revision-pinned authority resolution, transition evaluation, authorization, drift revalidation, and post-decision enforcement are provided by the separate Python runtime when that runtime is actually invoked.
+- **GitHub merge authority:** `vault_open_pr` proposes a change; it does not authorize or perform a merge.
+
+Consequently, connecting an MCP client to this endpoint does **not** establish that every tool call has passed through the Python Lattice governance boundary. Do not describe this endpoint as enforcing the full Lattice runtime unless an explicit, authenticated integration is implemented and verified.
+
+Any future integration must define the request and response contract, caller identity, exact target/scope/effect, pinned canonical revision, decision evidence, timeout and provider-failure behavior, and fail-closed semantics. Integration tests must exercise the actual mutation boundary. Production enforcement claims additionally require verifying deployment configuration and running a live smoke test against the deployed path.
+
+Tracked follow-up: [Define and verify the runtime governance enforcement boundary](https://github.com/kushkillerjsixx66/canonical-vault-mcp-server/issues/5).
