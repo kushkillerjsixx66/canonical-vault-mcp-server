@@ -19,23 +19,26 @@ import {
 } from "../services/github-write.js";
 import { GitHubContentPutResponse, GitHubPullRequest } from "../types.js";
 import { createPullRequestWithinScope, PullRequestTargetScopeError } from "../services/pr-scope.js";
+import { resolveWriteBranch, WriteBranchScopeError } from "../services/write-branch-scope.js";
 
 class WriteScopeError extends Error {}
 
 /** Resolve effective write branch: locked scope wins over client input. */
 function resolveBranch(requested: string | undefined): string {
-  if (WRITE_BRANCH_LOCKED && LOCKED_WRITE_BRANCH) {
-    if (requested && requested !== LOCKED_WRITE_BRANCH) {
-      throw new WriteScopeError(
-        `This deployment is locked to branch '${LOCKED_WRITE_BRANCH}'` +
-          (MODEL_WRITE_SCOPE ? ` (MODEL_WRITE_SCOPE=${MODEL_WRITE_SCOPE})` : "") +
-          `. Refusing client branch '${requested}'. ` +
-          `Point this model at its own deployment or unset MODEL_WRITE_SCOPE for multi-model allowlist mode.`
-      );
+  try {
+    return resolveWriteBranch(
+      requested,
+      WRITE_BRANCH_LOCKED,
+      LOCKED_WRITE_BRANCH,
+      MODEL_WRITE_SCOPE,
+      WRITE_BRANCH_ALLOWLIST
+    );
+  } catch (error) {
+    if (error instanceof WriteBranchScopeError) {
+      throw new WriteScopeError(error.message);
     }
-    return LOCKED_WRITE_BRANCH;
+    throw error;
   }
-  return requested || WRITE_BRANCH_ALLOWLIST[0];
 }
 
 function assertWritable(branch: string, path: string): void {
