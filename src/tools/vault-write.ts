@@ -235,7 +235,7 @@ Error Handling:
           structuredContent: { number: pr.number, url: pr.html_url, head, base: params.base, state: pr.state },
         };
       } catch (error) {
-        if (error instanceof WriteScopeError) {
+        if (error instanceof WriteScopeError || error instanceof PullRequestTargetScopeError) {
           return { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] };
         }
         return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `PR '${params.head}' -> '${params.base}'`) }] };
