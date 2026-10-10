@@ -28,7 +28,7 @@ The gateway must derive caller identity from authenticated transport credentials
 - `scope`: exact resources and permitted operation boundaries.
 - `effect`: precise intended GitHub side effect, including whether file content is proposed or a PR is opened.
 - `transition`: pre-state or expected head SHA, proposed state/content digest, trigger, constraints, and reversibility classification.
-- `expected_canonical_revision`: full commit SHA required by deployment policy; never `main` or a mutable ref as a revision pin.
+- Canonical revision and authority-graph blob SHA are **trusted gateway deployment configuration**, not request-body fields. The gateway must reject caller-supplied attempts to override either pin. Pin updates require a deliberate deployment change; never resolve authority from `main` or another mutable ref.
 - `idempotency_key`: stable key to prevent retries from duplicating the same external effect.
 
 Missing or ambiguous target, scope, effect, proposed state, or required authority evidence must be rejected before the mutation sink.
