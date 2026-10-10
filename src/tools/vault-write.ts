@@ -18,6 +18,7 @@ import {
   handleGitHubError,
 } from "../services/github-write.js";
 import { GitHubContentPutResponse, GitHubPullRequest } from "../types.js";
+import { pullRequestTargetError } from "../services/pr-scope.js";
 
 class WriteScopeError extends Error {}
 
@@ -212,6 +213,10 @@ Error Handling:
               },
             ],
           };
+        }
+        const targetError = pullRequestTargetError(head, params.base, GITHUB_DEFAULT_REF);
+        if (targetError) {
+          throw new WriteScopeError(targetError);
         }
         const pr = await githubCreatePullRequest<GitHubPullRequest>({
           title: params.title,
