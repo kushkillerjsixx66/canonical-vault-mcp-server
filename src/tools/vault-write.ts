@@ -18,7 +18,7 @@ import {
   handleGitHubError,
 } from "../services/github-write.js";
 import { GitHubContentPutResponse, GitHubPullRequest } from "../types.js";
-import { pullRequestTargetError } from "../services/pr-scope.js";
+import { createPullRequestWithinScope, PullRequestTargetScopeError } from "../services/pr-scope.js";
 
 class WriteScopeError extends Error {}
 
@@ -147,7 +147,7 @@ Error Handling:
           structuredContent: output,
         };
       } catch (error) {
-        if (error instanceof WriteScopeError) {
+        if (error instanceof WriteScopeError || error instanceof PullRequestTargetScopeError) {
           return { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] };
         }
         return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `write to '${params.path}'`) }] };
@@ -214,16 +214,17 @@ Error Handling:
             ],
           };
         }
-        const targetError = pullRequestTargetError(head, params.base, GITHUB_DEFAULT_REF);
-        if (targetError) {
-          throw new WriteScopeError(targetError);
-        }
-        const pr = await githubCreatePullRequest<GitHubPullRequest>({
-          title: params.title,
-          body: params.body,
+        const pr = await createPullRequestWithinScope(
           head,
-          base: params.base,
-        });
+          params.base,
+          GITHUB_DEFAULT_REF,
+          () => githubCreatePullRequest<GitHubPullRequest>({
+            title: params.title,
+            body: params.body,
+            head,
+            base: params.base,
+          })
+        );
         return {
           content: [
             {
