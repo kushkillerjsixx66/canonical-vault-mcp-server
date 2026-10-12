@@ -1,6 +1,8 @@
 # canonical-vault-mcp-server
 
-[![M8ven Verified](https://m8ven.ai/badge/mcp/kushkillerjsixx66-canonical-vault-mcp-server-1i5pze?variant=verified&v=1525346e782b34532e174e08e9809558)](https://m8ven.ai/mcp/kushkillerjsixx66-canonical-vault-mcp-server-1i5pze?s=readme)
+[![M8ven Verified](https://m8ven.ai/badge/mcp/kushkillerjsixx66-canonical-vault-mcp-server-1i5pze?variant=verified)](https://m8ven.ai/mcp/kushkillerjsixx66-canonical-vault-mcp-server-1i5pze?s=readme)
+
+[![M8ven Score](https://m8ven.ai/badge/mcp/kushkillerjsixx66-vara-mcp-server-18llln)](https://m8ven.ai/mcp/kushkillerjsixx66-vara-mcp-server-18llln?s=readme)
 
 MCP server that exposes the `canonical-vault` GitHub repo to any MCP client — GitHub Copilot, Claude, Grok, ChatGPT, or anything else that speaks Streamable HTTP MCP.
 
