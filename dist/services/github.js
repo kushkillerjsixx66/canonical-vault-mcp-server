@@ -2,8 +2,9 @@ import axios, { AxiosError } from "axios";
 import { GITHUB_API_BASE_URL, GITHUB_OWNER, GITHUB_REPO, GITHUB_TOKEN, } from "../constants.js";
 /**
  * Shared, read-only GitHub REST API client scoped to the canonical-vault
- * repository. Every function here issues GET requests only — this server
- * never writes to the repo.
+ * repository. Every function here issues GET requests only. Write access
+ * (opt-in, governed) lives entirely in ./github-write.ts instead of being
+ * added here, so this module's read-only guarantee stays true by inspection.
  */
 async function makeGitHubRequest(endpoint, params) {
     try {
