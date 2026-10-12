@@ -1,15 +1,23 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerVaultTools } from "./tools/vault.js";
 import { registerCanonicalTools } from "./tools/canonical.js";
+import { registerVaultWriteTools } from "./tools/vault-write.js";
 import { CANONICAL_RESOURCES, fetchCanonicalContent, findCanonicalByUri, handleGitHubError, resourceUri, } from "./resources/canonical.js";
-import { GITHUB_DEFAULT_REF } from "./constants.js";
+import { registerResourceTemplates } from "./resources/templates.js";
+import { GITHUB_DEFAULT_REF, GITHUB_WRITE_TOKEN } from "./constants.js";
 export function createServer() {
     const server = new McpServer({
         name: "canonical-vault-mcp-server",
-        version: "1.1.2",
+        version: "1.3.0",
     });
     registerVaultTools(server);
     registerCanonicalTools(server);
+    // Write tools are opt-in: they only exist on the server at all if
+    // GITHUB_WRITE_TOKEN is set. No env var, no write tools, no behavior
+    // change from before this was added.
+    if (GITHUB_WRITE_TOKEN) {
+        registerVaultWriteTools(server);
+    }
     // ----- Resources: curated substrate -----
     for (const r of CANONICAL_RESOURCES) {
         const uri = resourceUri(r.name);
@@ -61,6 +69,10 @@ export function createServer() {
             }
         });
     }
+    // ----- Resource templates: vault://file/{+path}, vault://commit/{sha} -----
+    // Phase 1 (2026-10-07): any vault file / commit becomes addressable as a
+    // resource instead of requiring a tool call. See resources/templates.ts.
+    registerResourceTemplates(server);
     // ----- Prompt: orientation (SDK: name + description string + callback) -----
     const orientationText = [
         "You are operating against the canonical-vault substrate via MCP.",
