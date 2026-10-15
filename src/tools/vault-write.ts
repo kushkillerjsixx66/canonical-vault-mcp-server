@@ -22,6 +22,26 @@ import { createPullRequestWithinScope, PullRequestTargetScopeError } from "../se
 import { resolveWriteBranch, WriteBranchScopeError } from "../services/write-branch-scope.js";
 import { WriteScopeError, writeFileWithinScope } from "../services/write-scope.js";
 
+class WriteBranchResolutionError extends Error {}
+
+/** Resolve effective write branch: deployment lock wins over client input. */
+function resolveBranch(requested: string | undefined): string {
+  try {
+    return resolveWriteBranch(
+      requested,
+      WRITE_BRANCH_LOCKED,
+      LOCKED_WRITE_BRANCH,
+      MODEL_WRITE_SCOPE,
+      WRITE_BRANCH_ALLOWLIST
+    );
+  } catch (error) {
+    if (error instanceof WriteBranchScopeError) {
+      throw new WriteBranchResolutionError(error.message);
+    }
+    throw error;
+  }
+}
+
 
 export function registerVaultWriteTools(server: McpServer): void {
   const defaultBranch = LOCKED_WRITE_BRANCH || WRITE_BRANCH_ALLOWLIST[0];
@@ -117,7 +137,7 @@ Error Handling:
           structuredContent: output,
         };
       } catch (error) {
-        if (error instanceof WriteScopeError || error instanceof PullRequestTargetScopeError) {
+        if (error instanceof WriteScopeError || error instanceof WriteBranchResolutionError || error instanceof PullRequestTargetScopeError) {
           return { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] };
         }
         return { isError: true, content: [{ type: "text", text: handleGitHubError(error, `write to '${params.path}'`) }] };
