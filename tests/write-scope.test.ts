@@ -1,30 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GITHUB_DEFAULT_REF,
+  WRITE_BRANCH_ALLOWLIST,
+  WRITE_PATH_DENYLIST,
+  modelSegmentFromPath,
+} from "../src/constants.js";
+import {
   assertWritableTarget,
   WriteScopeError,
   writeFileWithinScope,
 } from "../src/services/write-scope.ts";
 
 const policy = {
-  allowedBranches: ["chatgpt", "claude", "grok", "gemini"],
-  canonicalBranch: "main",
-  prohibitedPaths: [
-    /^00_governance\/constitution\//,
-    /^06_ip_legal\//,
-    /^00_governance\/claude\/manifest\.json$/,
-    /(^|\/)\.git(\/|$)/,
-  ],
-  modelSegmentFromPath(path: string): string | undefined {
-    const match = /^(?:vault|runtime|00_governance)\/(chatgpt|claude|grok|gemini|copilot|muse)\//i.exec(path);
-    return match?.[1].toLowerCase();
-  },
+  allowedBranches: WRITE_BRANCH_ALLOWLIST,
+  canonicalBranch: GITHUB_DEFAULT_REF,
+  prohibitedPaths: WRITE_PATH_DENYLIST,
+  modelSegmentFromPath,
 };
 
 test("canonical branch is rejected before the sink is invoked", async () => {
   let calls = 0;
   await assert.rejects(
-    writeFileWithinScope("main", "01_modules/ide/spec.md", policy, async () => {
+    writeFileWithinScope(GITHUB_DEFAULT_REF, "01_modules/ide/spec.md", policy, async () => {
       calls += 1;
       return "written";
     }),
@@ -72,9 +70,9 @@ test("a valid model-branch target invokes the sink exactly once", async () => {
   assert.deepEqual(result, { commit: "test-commit" });
 });
 
-test("pure target validation rejects an unknown branch", () => {
+test("branch absent from the production allowlist is rejected", () => {
   assert.throws(
-    () => assertWritableTarget("muse", "01_modules/ide/spec.md", policy),
+    () => assertWritableTarget("operator", "01_modules/ide/spec.md", policy),
     WriteScopeError
   );
 });
