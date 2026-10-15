@@ -177,3 +177,42 @@ Tests must assert sink call counts, not merely expected error text.
 **Gate E — Deployment evidence:** Verify deployed configuration without exposing secrets, inspect the actual deployed request path, and run a live smoke test with a controlled non-canonical proposal target. Until then, production enforcement remains unverified.
 
 No gate is passed by documentation alone. No merge, deployment, canonical mutation, operator identity verification, or authority grant is implied by this proposal.
+
+
+## 9. Reconciliation against the existing Python runtime (required before implementation)
+
+A source review of Canonical Vault `main` found that this proposal is **not yet wire-compatible** with the existing Python modules. This section records the differences so nobody accidentally treats the illustrative envelope above as an implemented schema.
+
+Reviewed sources:
+- `05_runtime/gateway/proposal_contract.py` at canonical-vault main commit `efb4cb9e572ef0c1b63d03d5fbfb6d6562deb3b1`
+- `05_runtime/governance/contracts.py` at the same revision
+- `05_runtime/governance/canonical_binding_resolver.py` and `github_canonical_authority_provider.py` at the same revision
+- `05_runtime/governance/boundary.py` and `runtime_factory.py` at the same revision
+
+### Existing request contract
+
+`validate_proposal_request` accepts only the top-level fields `request_id`, `operation`, `target`, `scope`, `effect`, `transition`, and `idempotency_key`. Its supported operation values are `propose_change` and `open_pull_request`. Target fields are `repository`, `head`, `base`, and `paths`. Transition fields are `expected_head_sha`, `proposed_content_sha256`, `trigger`, `constraints`, and `reversibility`.
+
+It expressly rejects caller-supplied trusted-only fields including `operator_id`, `caller_identity`, `canonical_revision`, `expected_canonical_revision`, `authority_graph_blob_sha`, `canonical_authority`, `ratified`, and `authorized`. Therefore, the canonical revision and authority-graph blob SHA shown in the illustrative section 3 envelope must **not** be copied into the untrusted proposal payload. They must be resolved from gateway deployment configuration and verified by the runtime resolver.
+
+### Existing runtime decision model
+
+The Python `GovernedRequest` carries a `ValidatedOperatorContext`, `ValidatedIntent`, payload, source references, action, runtime/policy versions and optional canonical revision/governance fingerprint. `GovernanceDecision` uses explicit outcomes such as `ALLOW`, `BLOCK`, `SILENCE`, `ABSTAIN`, `CONSTRAIN`, `UNRESOLVED`, `STALE`, `REVALIDATE`, `FAILED` and `AUDIT_MISMATCH`. An adapter must map these conservatively: only exact `ALLOW` may be eligible for further sink-boundary checks. Every other outcome blocks.
+
+The canonical binding resolver reads revision and authority-graph blob SHA from deployment-pinned configuration, independently fetches the authority graph at that revision, and checks both revision and blob SHA. The `GovernanceBoundary` also performs canonical-state drift checks around evaluation and has lineage/quarantine sinks. These are useful runtime primitives, but they are not by themselves a deployed HTTP API or authenticated MCP integration.
+
+### Remaining compatibility and trust gaps
+
+- No deployed authenticated request/decision API contract was found in the reviewed files.
+- `proposal_contract.py` validates shape and computes a request digest; its own module documentation says it authenticates no caller, resolves no authority, authorizes no transition, and performs no external effect.
+- The Python `GovernanceDecision.decision_hash` is a digest of decision summary data, not a service-response signature or proof of response origin.
+- The reviewed decision dataclass has a timestamp but no explicit decision expiry, signed response, authenticated caller binding, or general replay store. The gateway must add or securely wrap these semantics before a response can authorize an external GitHub sink.
+- The `ValidatedOperatorContext` type includes `verified=True` as a default field. A service adapter must construct this context only after actual trusted authentication/verification; the default value must never be treated as evidence that authentication happened.
+- The resolver's pinning verifies a configured immutable revision and blob SHA. It does not independently prove that the deployment pin is current or ratified; freshness and pin-update governance remain separate requirements.
+- The proposal's transport envelope, timestamps, and response binding remain a design layer to reconcile with the Python types. Do not add trusted-only fields to `validate_proposal_request` merely to make the examples fit.
+
+### Required next implementation step
+
+Before writing the network adapter, define and test a narrow mapping from the validated MCP proposal into `GovernedRequest`, including a trusted principal/credential resolution step that does not infer `JRM-01` from a caller string. Define a versioned response wrapper around `GovernanceDecision` that authenticates the service origin and binds the decision hash to the exact proposal digest, canonical revision, authority-graph blob SHA, request ID, expiry and one-time/idempotent execution key. If any required binding cannot be verified, the TypeScript write sink remains unreachable.
+
+This reconciliation is based on repository source review only. It does not establish production configuration, a deployed endpoint, identity proofing, or authorization to execute.
