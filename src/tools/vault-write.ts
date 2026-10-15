@@ -20,51 +20,8 @@ import {
 import { GitHubContentPutResponse, GitHubPullRequest } from "../types.js";
 import { createPullRequestWithinScope, PullRequestTargetScopeError } from "../services/pr-scope.js";
 import { resolveWriteBranch, WriteBranchScopeError } from "../services/write-branch-scope.js";
+import { WriteScopeError, writeFileWithinScope } from "../services/write-scope.js";
 
-class WriteScopeError extends Error {}
-
-/** Resolve effective write branch: locked scope wins over client input. */
-function resolveBranch(requested: string | undefined): string {
-  try {
-    return resolveWriteBranch(
-      requested,
-      WRITE_BRANCH_LOCKED,
-      LOCKED_WRITE_BRANCH,
-      MODEL_WRITE_SCOPE,
-      WRITE_BRANCH_ALLOWLIST
-    );
-  } catch (error) {
-    if (error instanceof WriteBranchScopeError) {
-      throw new WriteScopeError(error.message);
-    }
-    throw error;
-  }
-}
-
-function assertWritable(branch: string, path: string): void {
-  if (!WRITE_BRANCH_ALLOWLIST.includes(branch)) {
-    throw new WriteScopeError(
-      `'${branch}' is not a governed write branch (allowed: ${WRITE_BRANCH_ALLOWLIST.join(", ")}). ` +
-        `Per Model Contribution Contract (branch sovereignty) and canonical_merge_authority: false — ` +
-        `'${GITHUB_DEFAULT_REF}' can only be reached via vault_open_pr, never written to directly. ` +
-        `Each model must write only to its own branch (e.g. grok → grok, claude → claude).`
-    );
-  }
-  if (WRITE_PATH_DENYLIST.some((rx) => rx.test(path))) {
-    throw new WriteScopeError(
-      `'${path}' is in a prohibited zone (direct_canonical_mutation). Refusing to write.`
-    );
-  }
-  // Path/branch coherence: vault|runtime|00_governance/<model>/… requires branch === model
-  const modelSeg = modelSegmentFromPath(path);
-  if (modelSeg && modelSeg !== branch) {
-    throw new WriteScopeError(
-      `Path '${path}' is owned by model '${modelSeg}' but target branch is '${branch}'. ` +
-        `Per Model Contribution Contract, branch and path model segment must match ` +
-        `(write to branch '${modelSeg}' or use a path under vault/${branch}/).`
-    );
-  }
-}
 
 export function registerVaultWriteTools(server: McpServer): void {
   const defaultBranch = LOCKED_WRITE_BRANCH || WRITE_BRANCH_ALLOWLIST[0];
@@ -129,15 +86,25 @@ Error Handling:
     async (params: ProposeChangeInput) => {
       try {
         const branch = resolveBranch(params.branch);
-        assertWritable(branch, params.path);
-
-        const sha = await githubGetSha(params.path, branch);
-        const result = await githubPutFile<GitHubContentPutResponse>(params.path, {
-          message: params.message,
+        const result = await writeFileWithinScope(
           branch,
-          content: Buffer.from(params.content, "utf-8").toString("base64"),
-          ...(sha ? { sha } : {}),
-        });
+          params.path,
+          {
+            allowedBranches: WRITE_BRANCH_ALLOWLIST,
+            canonicalBranch: GITHUB_DEFAULT_REF,
+            prohibitedPaths: WRITE_PATH_DENYLIST,
+            modelSegmentFromPath,
+          },
+          async () => {
+            const sha = await githubGetSha(params.path, branch);
+            return githubPutFile<GitHubContentPutResponse>(params.path, {
+              message: params.message,
+              branch,
+              content: Buffer.from(params.content, "utf-8").toString("base64"),
+              ...(sha ? { sha } : {}),
+            });
+          }
+        );
 
         const output = {
           path: params.path,
