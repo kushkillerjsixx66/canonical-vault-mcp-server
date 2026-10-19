@@ -21,7 +21,7 @@
       "sha256": "sha256:c585eb13c5884fa802885cb13f7ebac750be44d79337dee1148cd3a1bcc274e8"
     },
     {
-      "name": "effect-content",
+      "name": "effect-object",
       "input": { "content": "hello", "effect": "repository.file.propose" },
       "canonical_json": "{\"content\":\"hello\",\"effect\":\"repository.file.propose\"}",
       "sha256": "sha256:6c76ae7376ef4c99a0c04a8467145a1b53aa7c8acc182ccbfc5348832e6e2b00"
