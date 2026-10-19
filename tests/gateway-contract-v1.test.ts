@@ -73,3 +73,20 @@ test("versioned gateway digest is explicitly namespaced and deterministic", () =
   assert.equal(gatewayDigestV1(value), gatewayDigestV1({ a: 1, b: 2 }));
   assert.match(gatewayDigestV1(value), /^jcs-sha256-v1:sha256:[0-9a-f]{64}$/);
 });
+
+test("canonicalizer rejects sparse arrays and non-JSON object properties", () => {
+  const sparse: unknown[] = [];
+  sparse.length = 1;
+  assert.throws(() => canonicalizeGatewayJsonV1(sparse), /JCS_NON_JSON_ARRAY|JCS_SPARSE_ARRAY/);
+
+  const withAccessor = Object.defineProperty({}, "value", {
+    enumerable: true,
+    get() { throw new Error("getter must not execute"); }
+  });
+  assert.throws(() => canonicalizeGatewayJsonV1(withAccessor), /JCS_NON_JSON_PROPERTY/);
+
+  assert.throws(() => canonicalizeGatewayJsonV1({ [Symbol("hidden")]: 1 }), /JCS_SYMBOL_KEY/);
+  const arrayWithProperty = [1] as number[] & { extra?: number };
+  arrayWithProperty.extra = 2;
+  assert.throws(() => canonicalizeGatewayJsonV1(arrayWithProperty), /JCS_NON_JSON_ARRAY/);
+});
