@@ -67,6 +67,17 @@ test("canonicalizer uses ECMAScript number serialization and UTF-16 key ordering
   assert.equal(canonicalizeGatewayJsonV1({ "\ue000": 1, "𐀀": 2 }), '{"𐀀":2,"\ue000":1}');
 });
 
+test("JCS number serialization matches RFC 8785 ECMAScript formatting boundaries", () => {
+  // RFC 8785 Appendix B-style cases: binary64 rounding, exponent formatting,
+  // fixed-vs-exponential thresholds, and negative zero.
+  assert.equal(
+    canonicalizeGatewayJsonV1([333333333.33333329, 1e30, 4.5, 2e-3, 1e-27]),
+    "[333333333.3333333,1e+30,4.5,0.002,1e-27]"
+  );
+  assert.equal(canonicalizeGatewayJsonV1([1e-6, 1e-7, 1e20, 1e21, -0]),
+    "[0.000001,1e-7,100000000000000000000,1e+21,0]");
+});
+
 test("versioned gateway digest is explicitly namespaced and deterministic", () => {
   const value = { b: 2, a: 1 };
   assert.equal(GATEWAY_DIGEST_VERSION, "jcs-sha256-v1");
