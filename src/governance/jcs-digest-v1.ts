@@ -38,6 +38,16 @@ export function canonicalizeGatewayJsonV1(value: unknown, ancestors = new Set<ob
   }
   if (Array.isArray(value)) {
     if (ancestors.has(value)) throw new TypeError("JCS_CIRCULAR_VALUE");
+    // Sparse arrays and custom array properties are not JSON data models.
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.length !== value.length + 1 || ownKeys.some((key) =>
+      key !== "length" && (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= value.length)
+    )) {
+      throw new TypeError("JCS_NON_JSON_ARRAY");
+    }
+    for (let i = 0; i < value.length; i += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, i)) throw new TypeError("JCS_SPARSE_ARRAY");
+    }
     ancestors.add(value);
     try {
       return `[${value.map((item) => canonicalizeGatewayJsonV1(item, ancestors)).join(",")}]`;
@@ -54,10 +64,16 @@ export function canonicalizeGatewayJsonV1(value: unknown, ancestors = new Set<ob
     }
     ancestors.add(record);
     try {
-      const keys = Object.keys(record);
+      const ownKeys = Reflect.ownKeys(record);
+      if (ownKeys.some((key) => typeof key !== "string")) throw new TypeError("JCS_SYMBOL_KEY");
+      const keys = ownKeys as string[];
       for (const key of keys) {
         assertUnicodeScalarString(key);
-        if (record[key] === undefined) throw new TypeError("JCS_UNDEFINED_VALUE");
+        const descriptor = Object.getOwnPropertyDescriptor(record, key);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new TypeError("JCS_NON_JSON_PROPERTY");
+        }
+        if (descriptor.value === undefined) throw new TypeError("JCS_UNDEFINED_VALUE");
       }
       // ECMAScript's default sort compares UTF-16 code units, matching JCS.
       keys.sort();
