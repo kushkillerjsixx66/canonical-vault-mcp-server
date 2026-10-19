@@ -46,7 +46,12 @@ export function canonicalizeGatewayJsonV1(value: unknown, ancestors = new Set<ob
       throw new TypeError("JCS_NON_JSON_ARRAY");
     }
     for (let i = 0; i < value.length; i += 1) {
-      if (!Object.prototype.hasOwnProperty.call(value, i)) throw new TypeError("JCS_SPARSE_ARRAY");
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+      if (!descriptor) throw new TypeError("JCS_SPARSE_ARRAY");
+      // Never invoke an array accessor while canonicalizing untrusted values.
+      if (!descriptor.enumerable || !("value" in descriptor)) {
+        throw new TypeError("JCS_NON_JSON_PROPERTY");
+      }
     }
     ancestors.add(value);
     try {
