@@ -43,8 +43,8 @@ test("digest golden vectors match their declared canonical bytes and SHA-256", (
 
   for (const vector of vectors.vectors) {
     assert.equal(canonicalizeGatewayJsonV1(vector.input), vector.canonical_json, vector.name);
-    const actual = createHash("sha256").update(vector.canonical_json, "utf8").digest("hex");
-    assert.equal(`sha256:${actual}`, vector.sha256, vector.name);
+    const actual = gatewayDigestV1(vector.input);
+    assert.equal(actual, `jcs-sha256-v1:${vector.sha256}`, vector.name);
   }
 });
 
