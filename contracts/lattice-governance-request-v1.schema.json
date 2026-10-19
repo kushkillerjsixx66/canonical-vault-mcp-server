@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lattice.governance.request.schema/1",
+  "title": "Lattice Governance Gateway Request v1 (proposal)",
+  "description": "Transport DTO proposal only. Not deployed, not ratified, and not an authorization artifact. Canonical revision and authority-graph pins are intentionally excluded from caller-controlled request fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "issued_at", "expires_at", "idempotency_key", "operation", "lineage"],
+  "properties": {
+    "schema_version": { "const": "lattice.governance.request/1" },
+    "request_id": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "idempotency_key": { "type": "string", "minLength": 16, "maxLength": 256, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target", "scope", "effect", "reversibility"],
+      "properties": {
+        "kind": { "const": "repository.file.propose" },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "branch", "path"],
+          "properties": {
+            "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+            "branch": { "type": "string", "minLength": 1, "maxLength": 255 },
+            "path": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$" }
+          }
+        },
+        "scope": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+        "effect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "content_digest"],
+          "properties": {
+            "kind": { "const": "create_or_update_file" },
+            "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          }
+        },
+        "reversibility": { "enum": ["reversible", "partially_reversible", "irreversible", "unknown"] }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caller_trace_id"],
+      "properties": {
+        "parent_event_id": { "type": ["string", "null"], "maxLength": 256 },
+        "caller_trace_id": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  }
+}
