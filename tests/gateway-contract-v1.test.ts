@@ -41,7 +41,15 @@ test("gateway DTO schemas are strict and versioned proposal artifacts", () => {
 test("digest golden vectors match their declared canonical bytes and SHA-256", () => {
   assert.equal(vectors.canonicalization.encoding, "UTF-8");
   assert.equal(vectors.canonicalization.digest, "SHA-256 over exact JCS bytes");
-  assert.ok(vectors.vectors.length >= 3);\n  const requestVector = vectors.vectors.find((vector: { name: string }) => vector.name === "request-minimal");\n  assert.ok(requestVector);\n  assert.ok(requestVector.input.request_id.length >= requestSchema.properties.request_id.minLength);
+  assert.ok(vectors.vectors.length >= 3);
+
+  const requestVector = vectors.vectors.find(
+    (vector: { name: string }) => vector.name === "request-minimal"
+  );
+  assert.ok(requestVector);
+  assert.ok(
+    requestVector.input.request_id.length >= requestSchema.properties.request_id.minLength
+  );
 
   for (const vector of vectors.vectors) {
     assert.equal(sortedJson(vector.input), vector.canonical_json, vector.name);
