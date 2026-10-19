@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { canonicalizeGatewayJsonV1, gatewayDigestV1, GATEWAY_DIGEST_VERSION } from "../src/governance/jcs-digest-v1.js";
 
 const fixturePath = (name: string) =>
   fileURLToPath(new URL(`../contracts/${name}`, import.meta.url));
@@ -37,7 +38,7 @@ function assertUnicodeScalarString(value: string): void {
  * This does not detect duplicate keys in source JSON; that must be enforced
  * by a duplicate-aware parser before JSON.parse at any untrusted boundary.
  */
-function canonicalizeJson(value: unknown, ancestors = new Set<object>()): string {
+function canonicalizeGatewayJsonV1(value: unknown, ancestors = new Set<object>()): string {
   if (value === null) return "null";
   if (typeof value === "string") {
     assertUnicodeScalarString(value);
@@ -52,7 +53,7 @@ function canonicalizeJson(value: unknown, ancestors = new Set<object>()): string
     if (ancestors.has(value)) throw new TypeError("JCS_CIRCULAR_VALUE");
     ancestors.add(value);
     try {
-      return `[${value.map((item) => canonicalizeJson(item, ancestors)).join(",")}]`;
+      return `[${value.map((item) => canonicalizeGatewayJsonV1(item, ancestors)).join(",")}]`;
     } finally {
       ancestors.delete(value);
     }
@@ -73,7 +74,7 @@ function canonicalizeJson(value: unknown, ancestors = new Set<object>()): string
       }
       // Default JS sort compares UTF-16 code units, as required by RFC 8785.
       keys.sort();
-      return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalizeJson(objectValue[key], ancestors)}`).join(",")}}`;
+      return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalizeGatewayJsonV1(objectValue[key], ancestors)}`).join(",")}}`;
     } finally {
       ancestors.delete(objectValue);
     }
@@ -105,28 +106,35 @@ test("digest golden vectors match their declared canonical bytes and SHA-256", (
   );
 
   for (const vector of vectors.vectors) {
-    assert.equal(canonicalizeJson(vector.input), vector.canonical_json, vector.name);
+    assert.equal(canonicalizeGatewayJsonV1(vector.input), vector.canonical_json, vector.name);
     const actual = createHash("sha256").update(vector.canonical_json, "utf8").digest("hex");
     assert.equal(`sha256:${actual}`, vector.sha256, vector.name);
   }
 });
 
 test("canonicalizer rejects values JSON cannot safely represent as JCS", () => {
-  assert.throws(() => canonicalizeJson(Number.NaN), /JCS_NON_FINITE_NUMBER/);
-  assert.throws(() => canonicalizeJson(Number.POSITIVE_INFINITY), /JCS_NON_FINITE_NUMBER/);
-  assert.throws(() => canonicalizeJson("\ud800"), /JCS_INVALID_UNICODE/);
-  assert.throws(() => canonicalizeJson({ value: undefined }), /JCS_UNDEFINED_VALUE/);
-  assert.throws(() => canonicalizeJson(1n), /JCS_UNSUPPORTED_VALUE/);
+  assert.throws(() => canonicalizeGatewayJsonV1(Number.NaN), /JCS_NON_FINITE_NUMBER/);
+  assert.throws(() => canonicalizeGatewayJsonV1(Number.POSITIVE_INFINITY), /JCS_NON_FINITE_NUMBER/);
+  assert.throws(() => canonicalizeGatewayJsonV1("\ud800"), /JCS_INVALID_UNICODE/);
+  assert.throws(() => canonicalizeGatewayJsonV1({ value: undefined }), /JCS_UNDEFINED_VALUE/);
+  assert.throws(() => canonicalizeGatewayJsonV1(1n), /JCS_UNSUPPORTED_VALUE/);
 });
 
 test("canonicalizer preserves array order and does not normalize Unicode", () => {
-  assert.equal(canonicalizeJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
-  assert.equal(canonicalizeJson([2, 1]), "[2,1]");
-  assert.notEqual(canonicalizeJson("é"), canonicalizeJson("e\u0301"));
+  assert.equal(canonicalizeGatewayJsonV1({ b: 1, a: 2 }), '{"a":2,"b":1}');
+  assert.equal(canonicalizeGatewayJsonV1([2, 1]), "[2,1]");
+  assert.notEqual(canonicalizeGatewayJsonV1("é"), canonicalizeGatewayJsonV1("e\u0301"));
 });
 
 test("canonicalizer uses ECMAScript number serialization and UTF-16 key ordering", () => {
-  assert.equal(canonicalizeJson(1e-7), "1e-7");
-  assert.equal(canonicalizeJson(-0), "0");
-  assert.equal(canonicalizeJson({ "\ue000": 1, "𐀀": 2 }), '{"𐀀":2,"\ue000":1}');
+  assert.equal(canonicalizeGatewayJsonV1(1e-7), "1e-7");
+  assert.equal(canonicalizeGatewayJsonV1(-0), "0");
+  assert.equal(canonicalizeGatewayJsonV1({ "\ue000": 1, "𐀀": 2 }), '{"𐀀":2,"\ue000":1}');
+});
+
+test("versioned gateway digest is explicitly namespaced and deterministic", () => {
+  const value = { b: 2, a: 1 };
+  assert.equal(GATEWAY_DIGEST_VERSION, "jcs-sha256-v1");
+  assert.equal(gatewayDigestV1(value), gatewayDigestV1({ a: 1, b: 2 }));
+  assert.match(gatewayDigestV1(value), /^jcs-sha256-v1:sha256:[0-9a-f]{64}$/);
 });
