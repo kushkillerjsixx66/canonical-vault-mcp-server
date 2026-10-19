@@ -1,0 +1,36 @@
+{
+  "status": "PROPOSAL ONLY — golden vectors for canonical JSON serialization and SHA-256; not authorization evidence",
+  "canonicalization": {
+    "name": "RFC 8785 JSON Canonicalization Scheme (JCS)",
+    "encoding": "UTF-8",
+    "digest": "SHA-256 over exact JCS bytes",
+    "representation": "sha256:<lowercase hexadecimal>",
+    "constraints": [
+      "Reject duplicate object keys before canonicalization.",
+      "Reject invalid Unicode and non-finite numeric values.",
+      "Do not normalize Unicode strings.",
+      "Array order is significant; object member order is canonicalized by JCS.",
+      "Do not hash pretty-printed JSON or a language-specific object string."
+    ]
+  },
+  "vectors": [
+    {
+      "name": "request-minimal",
+      "input": { "schema_version": "lattice.governance.request/1", "request_id": "req-001" },
+      "canonical_json": "{\"request_id\":\"req-001\",\"schema_version\":\"lattice.governance.request/1\"}",
+      "sha256": "sha256:c585eb13c5884fa802885cb13f7ebac750be44d79337dee1148cd3a1bcc274e8"
+    },
+    {
+      "name": "effect-content",
+      "input": { "content": "hello", "effect": "repository.file.propose" },
+      "canonical_json": "{\"content\":\"hello\",\"effect\":\"repository.file.propose\"}",
+      "sha256": "sha256:6c76ae7376ef4c99a0c04a8467145a1b53aa7c8acc182ccbfc5348832e6e2b00"
+    },
+    {
+      "name": "target",
+      "input": { "branch": "chatgpt", "path": "docs/proposal.md", "repository": "kushkillerjsixx66/canonical-vault" },
+      "canonical_json": "{\"branch\":\"chatgpt\",\"path\":\"docs/proposal.md\",\"repository\":\"kushkillerjsixx66/canonical-vault\"}",
+      "sha256": "sha256:c592800c58de9aa79c31a2b9a9f48f300212a160e38e5d1e21dbfabddf5f9f3c"
+    }
+  ]
+}
