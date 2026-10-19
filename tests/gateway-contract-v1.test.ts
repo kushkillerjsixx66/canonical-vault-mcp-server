@@ -114,7 +114,7 @@ test("digest golden vectors match their declared canonical bytes and SHA-256", (
 test("canonicalizer rejects values JSON cannot safely represent as JCS", () => {
   assert.throws(() => canonicalizeJson(Number.NaN), /JCS_NON_FINITE_NUMBER/);
   assert.throws(() => canonicalizeJson(Number.POSITIVE_INFINITY), /JCS_NON_FINITE_NUMBER/);
-  assert.throws(() => canonicalizeJson("\\ud800"), /JCS_INVALID_UNICODE/);
+  assert.throws(() => canonicalizeJson("\ud800"), /JCS_INVALID_UNICODE/);
   assert.throws(() => canonicalizeJson({ value: undefined }), /JCS_UNDEFINED_VALUE/);
   assert.throws(() => canonicalizeJson(1n), /JCS_UNSUPPORTED_VALUE/);
 });
@@ -122,11 +122,11 @@ test("canonicalizer rejects values JSON cannot safely represent as JCS", () => {
 test("canonicalizer preserves array order and does not normalize Unicode", () => {
   assert.equal(canonicalizeJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
   assert.equal(canonicalizeJson([2, 1]), "[2,1]");
-  assert.notEqual(canonicalizeJson("é"), canonicalizeJson("e\\u0301"));
+  assert.notEqual(canonicalizeJson("é"), canonicalizeJson("e\u0301"));
 });
 
 test("canonicalizer uses ECMAScript number serialization and UTF-16 key ordering", () => {
   assert.equal(canonicalizeJson(1e-7), "1e-7");
   assert.equal(canonicalizeJson(-0), "0");
-  assert.equal(canonicalizeJson({ "\\ue000": 1, "𐀀": 2 }), '{"𐀀":2,"\\ue000":1}');
+  assert.equal(canonicalizeJson({ "\ue000": 1, "𐀀": 2 }), '{"𐀀":2,"\ue000":1}');
 });
