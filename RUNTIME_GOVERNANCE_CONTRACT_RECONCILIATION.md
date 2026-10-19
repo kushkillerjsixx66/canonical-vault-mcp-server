@@ -72,3 +72,16 @@ Before implementing a production client, add shared test vectors and prove:
 Treat this reconciliation as Gate A input, not as Gate A approval. Review the field mapping and unresolved design decisions, then define the versioned DTO and cross-language digest vectors. Do not wire the MCP server to the runtime, add production credentials, enable a fallback path, merge, or deploy until the trust source, effect ownership, and end-to-end negative tests are independently reviewed.
 
 The trust-source gap remains unresolved. Proposal capability remains distinct from execution authority, and merge authority remains human-controlled.
+
+## 7. Concrete digest mismatch found during implementation review
+
+The current Python `sha256_digest` helper in `05_runtime/governance/contracts.py` is **not** an RFC 8785/JCS implementation:
+
+- For strings and bytes, it hashes the raw UTF-8/string bytes directly.
+- For other values, it uses Python `json.dumps(value, sort_keys=True, separators=(",", ":"))`, whose default `ensure_ascii=True` behavior escapes non-ASCII characters.
+- It returns bare lowercase hexadecimal, without the proposed `sha256:` prefix.
+- `GovernedRequest.payload_hash`, `GovernedRequest.artifact_hash`, and `GovernanceDecision.decision_hash` have different input shapes and must not be treated as interchangeable gateway request/operation/content digests.
+
+The shared three-vector fixture currently covers only simple ASCII objects. Matching those hashes does not prove that the current Python helper and an RFC 8785 implementation agree for Unicode, numeric edge cases, or all JSON values. The TypeScript test helper is also a narrow fixture serializer, not a full JCS implementation.
+
+**Required disposition:** preserve existing runtime hash semantics until a separately reviewed change authorizes and tests a migration. Implement the gateway's wire digest using independently reviewed JCS libraries on both sides, or define a versioned adapter that explicitly preserves the current runtime hash as a separate field. Do not relabel an existing `decision_hash` or `payload_hash` as a JCS request digest. Add non-ASCII and escaped-string vectors before claiming cross-language conformance.
