@@ -89,4 +89,18 @@ test("canonicalizer rejects sparse arrays and non-JSON object properties", () =>
   const arrayWithProperty = [1] as number[] & { extra?: number };
   arrayWithProperty.extra = 2;
   assert.throws(() => canonicalizeGatewayJsonV1(arrayWithProperty), /JCS_NON_JSON_ARRAY/);
+
+  let arrayGetterInvoked = false;
+  const arrayWithAccessor: unknown[] = [];
+  Object.defineProperty(arrayWithAccessor, "0", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      arrayGetterInvoked = true;
+      throw new Error("array getter must not execute");
+    }
+  });
+  arrayWithAccessor.length = 1;
+  assert.throws(() => canonicalizeGatewayJsonV1(arrayWithAccessor), /JCS_NON_JSON_PROPERTY/);
+  assert.equal(arrayGetterInvoked, false);
 });
