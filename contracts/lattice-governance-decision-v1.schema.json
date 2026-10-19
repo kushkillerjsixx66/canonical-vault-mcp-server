@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lattice.governance.decision.schema/1",
+  "title": "Lattice Governance Gateway Decision v1 (proposal)",
+  "description": "Response DTO proposal only. A valid JSON object is not authenticated by itself. The client must authenticate the gateway transport and verify exact request binding before any effect.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "request_digest", "decision_id", "outcome", "issued_at", "expires_at", "binding", "evidence", "constraints", "reason_code", "lineage"],
+  "properties": {
+    "schema_version": { "const": "lattice.governance.decision/1" },
+    "request_id": { "type": "string", "minLength": 16, "maxLength": 128 },
+    "request_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "decision_id": { "type": "string", "minLength": 16, "maxLength": 128 },
+    "outcome": { "enum": ["ALLOW", "BLOCK", "INDETERMINATE"] },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authenticated_principal", "operation_digest", "target_digest", "canonical_revision", "authority_graph_blob_sha"],
+      "properties": {
+        "authenticated_principal": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "operation_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "target_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "canonical_revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "authority_graph_blob_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "result"],
+        "properties": {
+          "evidence_id": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "result": { "enum": ["verified", "rejected", "unavailable"] }
+        }
+      }
+    },
+    "constraints": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+    "reason_code": { "type": "string", "pattern": "^[A-Z0-9_]{1,96}$" },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_decision_hash", "runtime_lineage_id"],
+      "properties": {
+        "runtime_decision_hash": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "runtime_lineage_id": { "type": ["string", "null"], "maxLength": 512 }
+      }
+    }
+  }
+}
