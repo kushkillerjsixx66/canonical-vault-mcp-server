@@ -25,6 +25,17 @@ Plus two write tools, registered **only** when `GITHUB_WRITE_TOKEN` is set — o
 
 Scope is fixed by the Model Contribution Contract (`00_governance/contracts/model-contribution.md`) and `canonical_merge_authority: false`: no direct writes to the canonical branch, no path in a prohibited zone, no merge tool anywhere in this server.
 
+## The Lattice
+
+This server is part of **the Lattice** — a governance-first cognitive architecture for AI ("cognitive constitution"): layered gates (coherence · attention budget · reversibility), mandatory per-signal lineage, and refusal on insufficient evidence treated as a governed success.
+
+- **Live demo:** https://huggingface.co/spaces/Jeremysixx66/lattice-demo
+- **Paper (SSRN, July 2026):** https://doi.org/10.2139/ssrn.7141439
+- **Writing:** https://liminaljermo.substack.com
+- **Spec bundle (Zenodo):** https://doi.org/10.5281/zenodo.23242183
+- **Archive and source map (are.na):** https://www.are.na/jeremy-sebastian
+- **ORCID:** https://orcid.org/0009-0000-0609-822X
+
 ---
 
 ## 1. Deploy to Vercel
