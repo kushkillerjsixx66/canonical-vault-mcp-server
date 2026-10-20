@@ -4,6 +4,8 @@
 
 [![M8ven Score](https://m8ven.ai/badge/mcp/kushkillerjsixx66-vara-mcp-server-18llln)](https://m8ven.ai/mcp/kushkillerjsixx66-vara-mcp-server-18llln?s=readme)
 
+<a href="https://lounge.ai/@liminaljermo"><img src="https://lounge.ai/api/badge/liminaljermo" alt="Jeremy Sebastian on Lounge" height="28"></a>
+
 MCP server that exposes the `canonical-vault` GitHub repo to any MCP client — GitHub Copilot, Claude, Grok, ChatGPT, or anything else that speaks Streamable HTTP MCP.
 
 Five read-only tools, always available, scoped to `kushkillerjsixx66/canonical-vault`:
