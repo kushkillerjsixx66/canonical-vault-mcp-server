@@ -25,6 +25,7 @@ export const KNOWN_MODEL_BRANCHES = [
   "gemini",
   "copilot",
   "muse",
+  "notion",
 ] as const;
 
 export type ModelBranch = (typeof KNOWN_MODEL_BRANCHES)[number];
