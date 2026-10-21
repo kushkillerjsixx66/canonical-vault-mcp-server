@@ -64,7 +64,7 @@ https://canonical-vault-mcp-server.vercel.app/api/mcp
 | `GITHUB_REPO` | No | `canonical-vault` | |
 | `GITHUB_DEFAULT_REF` | No | `main` | |
 | `GITHUB_WRITE_TOKEN` | No — write tools off without it | none | **Sensitive.** Fine-grained PAT: Contents R/W on `canonical-vault` only. |
-| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `grok,claude,chatgpt,gemini,copilot,muse` | Shared multi-model surface. Must never include `main`. |
+| `GITHUB_WRITE_BRANCH_ALLOWLIST` | No | `grok,claude,chatgpt,gemini,copilot,muse,notion` | Shared multi-model surface. Must never include `main`. |
 | `MODEL_WRITE_SCOPE` | No | unset | **Hard lock.** e.g. `grok` → this deployment may only write to branch `grok`. Overrides the multi-model allowlist. Use one deployment per model for true isolation. |
 
 After changing env vars, redeploy production.
