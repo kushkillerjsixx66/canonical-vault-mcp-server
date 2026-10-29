@@ -5,16 +5,19 @@ export class WritePathScopeError extends Error {}
 /**
  * Validate a repository-relative write path before any GitHub API call.
  * Reject ambiguous path syntax, then apply protected-zone and model-ownership
- * rules to a normalized path so leading slashes/case cannot bypass policy.
+ * rules to a normalized path so case changes cannot bypass policy.
  */
 export function assertWritablePath(path: string, branch: string, allowedBranches: readonly string[]): string {
   if (typeof path !== "string" || path.length === 0 || path.trim() === "") {
     throw new WritePathScopeError("Write path must be a non-empty repository-relative path.");
   }
-  if (path.startsWith("/") || path.startsWith("\\\\") || path.includes("\\\\")) {
+  if (path.startsWith("/") || path.includes("\\")) {
     throw new WritePathScopeError("Absolute paths and backslashes are not allowed in repository write paths.");
   }
-  if (/[\\u0000-\\u001f\\u007f]/.test(path)) {
+  if (Array.from(path).some((char) => {
+    const code = char.charCodeAt(0);
+    return code < 32 || code === 127;
+  })) {
     throw new WritePathScopeError("Control characters are not allowed in repository write paths.");
   }
   const segments = path.split("/");
