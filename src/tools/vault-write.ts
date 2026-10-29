@@ -8,8 +8,6 @@ import {
   MODEL_WRITE_SCOPE,
   WRITE_BRANCH_ALLOWLIST,
   WRITE_BRANCH_LOCKED,
-  WRITE_PATH_DENYLIST,
-  modelSegmentFromPath,
 } from "../constants.js";
 import {
   githubCreatePullRequest,
@@ -20,6 +18,7 @@ import {
 import { GitHubContentPutResponse, GitHubPullRequest } from "../types.js";
 import { createPullRequestWithinScope, PullRequestTargetScopeError } from "../services/pr-scope.js";
 import { resolveWriteBranch, WriteBranchScopeError } from "../services/write-branch-scope.js";
+import { assertWritablePath, WritePathScopeError } from "../services/write-path-scope.js";
 
 class WriteScopeError extends Error {}
 
@@ -41,28 +40,14 @@ function resolveBranch(requested: string | undefined): string {
   }
 }
 
-function assertWritable(branch: string, path: string): void {
-  if (!WRITE_BRANCH_ALLOWLIST.includes(branch)) {
-    throw new WriteScopeError(
-      `'${branch}' is not a governed write branch (allowed: ${WRITE_BRANCH_ALLOWLIST.join(", ")}). ` +
-        `Per Model Contribution Contract (branch sovereignty) and canonical_merge_authority: false — ` +
-        `'${GITHUB_DEFAULT_REF}' can only be reached via vault_open_pr, never written to directly. ` +
-        `Each model must write only to its own branch (e.g. grok → grok, claude → claude).`
-    );
-  }
-  if (WRITE_PATH_DENYLIST.some((rx) => rx.test(path))) {
-    throw new WriteScopeError(
-      `'${path}' is in a prohibited zone (direct_canonical_mutation). Refusing to write.`
-    );
-  }
-  // Path/branch coherence: vault|runtime|00_governance/<model>/… requires branch === model
-  const modelSeg = modelSegmentFromPath(path);
-  if (modelSeg && modelSeg !== branch) {
-    throw new WriteScopeError(
-      `Path '${path}' is owned by model '${modelSeg}' but target branch is '${branch}'. ` +
-        `Per Model Contribution Contract, branch and path model segment must match ` +
-        `(write to branch '${modelSeg}' or use a path under vault/${branch}/).`
-    );
+function assertWritable(branch: string, path: string): string {
+  try {
+    return assertWritablePath(path, branch, WRITE_BRANCH_ALLOWLIST);
+  } catch (error) {
+    if (error instanceof WritePathScopeError) {
+      throw new WriteScopeError(error.message);
+    }
+    throw error;
   }
 }
 
@@ -129,10 +114,10 @@ Error Handling:
     async (params: ProposeChangeInput) => {
       try {
         const branch = resolveBranch(params.branch);
-        assertWritable(branch, params.path);
+        const safePath = assertWritable(branch, params.path);
 
-        const sha = await githubGetSha(params.path, branch);
-        const result = await githubPutFile<GitHubContentPutResponse>(params.path, {
+        const sha = await githubGetSha(safePath, branch);
+        const result = await githubPutFile<GitHubContentPutResponse>(safePath, {
           message: params.message,
           branch,
           content: Buffer.from(params.content, "utf-8").toString("base64"),
@@ -140,7 +125,7 @@ Error Handling:
         });
 
         const output = {
-          path: params.path,
+          path: safePath,
           branch,
           commit_sha: result.commit.sha,
           commit_url: result.commit.html_url,
