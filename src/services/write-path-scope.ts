@@ -11,8 +11,8 @@ export function assertWritablePath(path: string, branch: string, allowedBranches
   if (typeof path !== "string" || path.length === 0 || path.trim() === "") {
     throw new WritePathScopeError("Write path must be a non-empty repository-relative path.");
   }
-  if (path.startsWith("/") || path.includes("\\")) {
-    throw new WritePathScopeError("Absolute paths and backslashes are not allowed in repository write paths.");
+  if (path.startsWith("/") || path.includes("\\") || /^[A-Za-z]:/.test(path)) {
+    throw new WritePathScopeError("Absolute paths, drive-letter paths, and backslashes are not allowed in repository write paths.");
   }
   if (Array.from(path).some((char) => {
     const code = char.charCodeAt(0);
