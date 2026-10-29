@@ -9,7 +9,7 @@ test("allows a repository-relative ordinary path for an allowed branch", () => {
 });
 
 test("rejects absolute paths, backslashes, empty segments, and traversal before mutation", () => {
-  for (const path of ["/01_modules/spec.md", "\\\\host\\file", "a\\b", "a//b", "./a", "a/../b", "a/./b", ""]) {
+  for (const path of ["/01_modules/spec.md", "C:/notes.md", "c:notes.md", "\\\\host\\file", "a\\b", "a//b", "./a", "a/../b", "a/./b", ""]) {
     assert.throws(() => assertWritablePath(path, "chatgpt", branches), WritePathScopeError, path || "(empty)");
   }
 });
